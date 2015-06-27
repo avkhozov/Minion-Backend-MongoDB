@@ -1,5 +1,5 @@
 {
-   "abstract" : "It's new $module",
+   "abstract" : "MongoDB backend for Minion",
    "author" : [
       "Andrey Khozov <avkhozov@gmail.com>"
    ],
@@ -42,7 +42,8 @@
       },
       "runtime" : {
          "requires" : {
-            "perl" : "5.008001"
+            "Minion" : "1.15",
+            "MongoDB" : "0"
          }
       },
       "test" : {
@@ -52,6 +53,17 @@
       }
    },
    "release_status" : "unstable",
-   "version" : "0.01",
+   "resources" : {
+      "bugtracker" : {
+         "web" : "https://github.com/avkhozov/Minion-Backend-MongoDB/issues"
+      },
+      "homepage" : "https://github.com/avkhozov/Minion-Backend-MongoDB",
+      "repository" : {
+         "type" : "git",
+         "url" : "git://github.com/avkhozov/Minion-Backend-MongoDB.git",
+         "web" : "https://github.com/avkhozov/Minion-Backend-MongoDB"
+      }
+   },
+   "version" : "0.97",
    "x_authority" : "cpan:AVKHOZOV"
 }
