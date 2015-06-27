@@ -2,5 +2,7 @@ Revision history for Perl extension Minion-Backend-MongoDB
 
 {{$NEXT}}
 
-    - Initial version
+0.97 2015-06-27T07:35:30Z
+
+    - Initial release
 
