@@ -1,13 +1,14 @@
 package Minion::Backend::MongoDB;
 use Mojo::Base 'Minion::Backend';
 
-our $VERSION = '0.97';
+our $VERSION = '0.98';
 
 use boolean;
 use DateTime;
 use Mojo::URL;
-use MongoDB::OID;
+use BSON::ObjectId;
 use MongoDB;
+use Scalar::Util 'weaken';
 use Sys::Hostname 'hostname';
 use Tie::IxHash;
 use Time::HiRes 'time';
@@ -17,6 +18,7 @@ has jobs          => sub { $_[0]->mongodb->coll($_[0]->prefix . '.jobs') };
 has notifications => sub { $_[0]->mongodb->coll($_[0]->prefix . '.notifications') };
 has prefix        => 'minion';
 has workers       => sub { $_[0]->mongodb->coll($_[0]->prefix . '.workers') };
+#has minion        => sub { $_[0]->on_minion_set(@_) };
 
 sub dequeue {
   my ($self, $oid) = @_;
@@ -49,8 +51,9 @@ sub enqueue {
     task     => $task
   };
 
-  my $oid = $self->jobs->insert($doc);
-  $self->notifications->insert({c => 'created'});
+  my $res = $self->jobs->insert_one($doc);
+  my $oid = $res->inserted_id;
+  $self->notifications->insert_one({c => 'created'});
   return $oid;
 }
 
@@ -58,51 +61,187 @@ sub fail_job { shift->_update(1, @_) }
 
 sub finish_job { shift->_update(0, @_) }
 
-sub job_info { $_[0]->_job_info($_[0]->jobs->find_one({_id => MongoDB::OID->new(value => "$_[1]")})); }
+sub job_info { $_[0]->_job_info($_[0]->jobs->find_one({_id => BSON::OID->new(oid => "$_[1]")})); }
 
 sub list_jobs {
-  my ($self, $skip, $limit, $options) = @_;
+  my ($self, $lskip, $llimit, $options) = @_;
 
-  my $query = {state => {'$exists' => true}};
-  $query->{state} = $options->{state} if $options->{state};
-  $query->{task}  = $options->{task}  if $options->{task};
+  my $imatch    = {};
+  $options->{'_ids'} = [map(BSON::ObjectId->new($_), @{$options->{ids}})]
+    if $options->{ids};
+  foreach (qw(_id state task queue)) {
+      $imatch->{$_} = {'$in' => $options->{$_ . 's'}} if $options->{$_ . 's'};
+  }
 
-  my $cursor = $self->jobs->find($query);
-  $cursor->sort({_id => -1})->skip($skip)->limit($limit);
+  my $match     = { '$match' => $imatch };
+  my $lookup    = {'$lookup' => {
+      from          => 'minion.jobs',
+      localField    => '_id',
+      foreignField  => 'parents',
+      as            => 'children'
+  }};
+  my $skip      = { '$skip'     => $lskip },
+  my $limit     = { '$limit'    => $llimit },
+  my $sort      = { '$sort'     => { _id => -1 } };
+  my $iproject  = {};
+  foreach (qw(_id args attempts children notes priority queue result
+    retries state task worker)) {
+        $iproject->{$_} = 1;
+  }
+  foreach (qw(parents)) {
+        $iproject->{$_} = { '$ifNull' =>  ['$' . $_ , [] ]};
+  }
+  foreach (qw(created delayed finished retried started)) {
+        $iproject->{$_} = {'$toLong' => {'$multiply' => [{
+            '$convert' => { 'input' => '$'. $_, to => 'long'}}, 0.001]}};
+  }
+  $iproject->{total} = { '$size' => '$children'};
+  my $project   = { '$project' => $iproject};
 
-  return [map { $self->_job_info($_) } $cursor->all];
+  my $aggregate = [$match, $lookup, $skip, $limit, $sort, $project];
+
+
+  my $cursor = $self->jobs->aggregate($aggregate);
+
+  #print Data::Dumper::Dumper($options);
+  #print Data::Dumper::Dumper($match);
+  my $jobs = [map { {id => $_->{_id}, %$_} } $cursor->all];
+  my $ret = { total => scalar(@$jobs), jobs => $jobs};
+  #print Data::Dumper::Dumper($ret);
+  return $ret;
 }
+
+# da implementare
+#sub list_locks {
+#  my ($self, $offset, $limit, $options) = @_;
+
+#  my $locks = $self->pg->db->query(
+#    'select name, extract(epoch from expires) as expires,
+#       count(*) over() as total from minion_locks
+#     where expires > now() and (name = any ($1) or $1 is null)
+#     order by id desc limit $2 offset $3', $options->{names}, $limit, $offset
+#  )->hashes->to_array;
+#  return _total('locks', $locks);
+#}
+
 
 sub list_workers {
   my ($self, $skip, $limit) = @_;
   my $cursor = $self->workers->find({pid => {'$exists' => true}});
   $cursor->sort({_id => -1})->skip($skip)->limit($limit);
-  return [map { $self->_worker_info($_) } $cursor->all];
+  my $workers =  [map { $self->_worker_info($_) } $cursor->all];
+  return _total('workers', $workers);
+}
+
+sub _total {
+  my ($name, $results) = @_;
+  my $total = @$results ? $results->[0]{total} : 0;
+  delete $_->{total} for @$results;
+  return {total => $total, $name => $results};
 }
 
 sub new {
   my ($class, $url) = @_;
-  my $client = MongoDB::MongoClient->new(host => $url);
+  my $client = MongoDB::MongoClient->new(
+    host                => $url,
+    connect_timeout_ms  => 300000,
+    socket_timeout_ms   => 300000,
+  );
   my $db = $client->db($client->db_name);
   return $class->SUPER::new(mongodb => $db);
 }
 
-sub register_worker {
+
+#sub minion {
+#  say qq(New minion set);
+#}
+
+sub minion {
+  # every time worker dequeue we must reconnect db
+  my ($self, $minion)      = @_;
+
+  return $self->{minion} unless $minion;
+
+  $self->{minion} = $minion;
+  weaken $self->{minion};
+
+  #say qq("New minion set");
+
+  $minion->on(worker => sub {
+      my ($minion, $worker) = @_;
+      #$worker->on(dequeue => sub {
+      #    my ($worker, $job, $pid) = @_;
+      #    my ($id, $task) = ($job->id, $job->task);
+      #    say qq{Process $pid is performing job "$id" with task "$task" - Reconnect DB};
+      #    #say qq{Reconnect DB};
+      #    $worker->self->mongodb->client->reconnect();
+      #})
+      $worker->on(dequeue => sub { pop->once(spawn => \&_spawn) } );
+  });
+}
+sub _spawn {
+  my ($job, $pid) = @_;
+  my ($id, $task) = ($job->id, $job->task);
+  #say qq{Process $pid is performing job "$id" with task "$task" - Reconnect DB};
+  $job->minion->backend->mongodb->client->reconnect();
+}
+
+sub note {
+  my ($self, $id, $merge) = @_;
+
+  return $self->workers->find_one_and_update(
+    {_id => $id},
+    {'$set' => {notes => $merge}},
+    {
+        upsert    => 0,
+        returnDocument => 'after',
+    }
+  )
+}
+
+sub receive {
   my ($self, $id) = @_;
+  #my $array = shift->pg->db->query(
+  #  "update minion_workers as new set inbox = '[]'
+  #   from (select id, inbox from minion_workers where id = ? for update)
+  #   as old
+  #   where new.id = old.id and old.inbox != '[]'
+  #   returning old.inbox", shift
+  #)->expand->array;
+
+  my $oldrec = $self->workers->find_one_and_update(
+    {_id => $id, inbox => { '$exists' => 1, '$ne' => [] } },
+    {'$set' => {inbox => [] }},
+    {
+        upsert    => 0,
+        returnDocument => 'before',
+    }
+  );
+
+  return $oldrec ? $oldrec->inbox // [] : [];
+}
+
+
+sub register_worker {
+  my ($self, $id, $options) = @_;
 
   return $id
     if $id
-    && $self->workers->find_and_modify(
-    {query => {_id => $id}, update => {'$set' => {notified => DateTime->from_epoch(epoch => time)}}});
+    && $self->workers->find_one_and_update(
+    {_id => $id}, {'$set' => {notified => DateTime->from_epoch(epoch => time)}});
 
-  $self->jobs->ensure_index(Tie::IxHash->new(state => 1, delayed => 1, task => 1));
-  $self->workers->insert(
+  $self->jobs->indexes->create_one(Tie::IxHash->new(state => 1, delayed => 1, task => 1));
+  my $res = $self->workers->insert_one(
     { host     => hostname,
       pid      => $$,
       started  => DateTime->from_epoch(epoch => time),
-      notified => DateTime->from_epoch(epoch => time)
+      notified => DateTime->from_epoch(epoch => time),
+      status => $options->{status} // {},
+      inbox => [],
     }
   );
+
+  return $res->inserted_id;
 }
 
 sub remove_job {
@@ -117,23 +256,26 @@ sub repair {
 
   # Check worker registry
   my $workers = $self->workers;
-  $workers->remove({notified => {'$lt' => DateTime->from_epoch(epoch => time - $minion->missing_after)}});
+
+  $workers->delete_one({notified => {'$lt' => DateTime->from_epoch(epoch => time - $minion->missing_after)}});
 
   # Abandoned jobs
   my $jobs = $self->jobs;
   my $cursor = $jobs->find({state => 'active'});
   while (my $job = $cursor->next) {
-    $jobs->save(
-      { %$job,
+    $jobs->update_one(
+      { _id => $job->{_id}},
+      {'$set' => {
         finished => DateTime->from_epoch(epoch => time),
         state    => 'failed',
         result   => 'Worker went away'
-      }
+       }},
+       {upsert => 0}
     ) unless $workers->find_one({_id => $job->{worker}});
   }
 
   # Old jobs
-  $jobs->remove(
+  $jobs->delete_one(
     {state => 'finished', finished => {'$lt' => DateTime->from_epoch(epoch => time - $minion->remove_after)}}
   );
 }
@@ -165,20 +307,20 @@ sub stats {
   my $active =
     @{$self->mongodb->run_command([distinct => $jobs->name, key => 'worker', query => {state => 'active'}])
       ->{values}};
-  my $all = $self->workers->find->count;
+  my $all = $self->workers->count_documents({});
   my $stats = {active_workers => $active, inactive_workers => $all - $active};
-  $stats->{"${_}_jobs"} = $jobs->find({state => $_})->count for qw(active failed finished inactive);
+  $stats->{"${_}_jobs"} = $jobs->count_documents({state => $_}) for qw(active failed finished inactive);
   return $stats;
 }
 
-sub unregister_worker { shift->workers->remove({_id => shift}) }
+sub unregister_worker { shift->workers->delete_one({_id => shift}) }
 
 sub worker_info { $_[0]->_worker_info($_[0]->workers->find_one({_id => $_[1]})) }
 
 sub _await {
   my $self = shift;
 
-  my $last = $self->{last} //= MongoDB::OID->new;
+  my $last = $self->{last} //= BSON::OID->new;
   my $cursor = $self->notifications->find({_id => {'$gt' => $last}, c => 'created'})->tailable(1);
   return undef unless my $doc = $cursor->next || $cursor->next;
   $self->{last} = $doc->{_id};
@@ -191,18 +333,23 @@ sub _job_info {
   return undef unless my $job = shift;
   return {
     args     => $job->{args},
-    created  => $job->{created} ? $job->{created}->hires_epoch : undef,
-    delayed  => $job->{delayed} ? $job->{delayed}->hires_epoch : undef,
-    finished => $job->{finished} ? $job->{finished}->hires_epoch : undef,
+    attempts => $job->{attempts} ? $job->{attempts}->value : undef,,
+    created  => $job->{created} ? $job->{created}->value : undef,
+    delayed  => $job->{delayed} ? $job->{delayed}->value : undef,
+    finished => $job->{finished} ? $job->{finished}->value : undef,
     id       => $job->{_id},
     priority => $job->{priority},
     result   => $job->{result},
-    retried  => $job->{retried} ? $job->{retried}->hires_epoch : undef,
+    retried  => $job->{retried} ? $job->{retried}->value : undef,
     retries => $job->{retries} // 0,
-    started => $job->{started} ? $job->{started}->hires_epoch : undef,
+    started => $job->{started} ? $job->{started}->value : undef,
     state   => $job->{state},
     task    => $job->{task},
-    worker  => $job->{worker}
+    parents  => $job->{parents},
+    children  => $job->{children},
+    queue  => $job->{queue},
+    worker  => $job->{worker},
+    total  => $job->{total},
   };
 }
 
@@ -215,34 +362,52 @@ sub _notifications {
   return if grep { $_ eq $notifications->name } $self->mongodb->collection_names;
 
   $self->mongodb->run_command([create => $notifications->name, capped => 1, size => 1048576, max => 128]);
-  $notifications->insert({});
+  $notifications->insert_one({});
 }
 
 sub _try {
   my ($self, $oid) = @_;
 
-  my $doc = {
-    query => Tie::IxHash->new(
+  #my $doc = {
+  #  query => Tie::IxHash->new(
+  #    delayed => {'$lt' => DateTime->from_epoch(epoch => time)},
+  #    state   => 'inactive',
+  #    task => {'$in' => [keys %{$self->minion->tasks}]}
+  #  ),
+  #  fields => {args     => 1, task => 1},
+  #  sort   => {priority => -1},
+  #  update => {'$set' => {started => DateTime->from_epoch(epoch => time), state => 'active', worker => $oid}},
+  #  new    => 1
+  #};
+  my $doc = [
+    Tie::IxHash->new(
       delayed => {'$lt' => DateTime->from_epoch(epoch => time)},
       state   => 'inactive',
       task => {'$in' => [keys %{$self->minion->tasks}]}
     ),
-    fields => {args     => 1, task => 1},
-    sort   => {priority => -1},
-    update => {'$set' => {started => DateTime->from_epoch(epoch => time), state => 'active', worker => $oid}},
-    new    => 1
-  };
+    {'$set' => {started => DateTime->from_epoch(epoch => time), state => 'active', worker => $oid}},
+    {
+        projection => {args     => 1, task => 1},
+        sort   => {priority => -1},
+        upsert    => 0,
+        returnDocument => 'after',
+    }
+  ];
 
-  return $self->jobs->find_and_modify($doc);
+  return $self->jobs->find_one_and_update(@$doc);
 }
 
 sub _update {
-  my ($self, $fail, $oid, $err) = @_;
+  my ($self, $fail, $oid, $retries, $result) = @_;
 
-  my $update = {finished => DateTime->from_epoch(epoch => time), state => $fail ? 'failed' : 'finished'};
-  $update->{result} = $err if $fail;
-  my $query = {_id => $oid, state => 'active'};
-  return !!$self->jobs->update($query, {'$set' => $update})->{n};
+  my $update = {
+      finished => DateTime->from_epoch(epoch => time),
+      state => $fail ? 'failed' : 'finished',
+      result => $result,
+  };
+  my $query = {_id => $oid, state => 'active', retries => $retries};
+  my $res = $self->jobs->update_one($query, {'$set' => $update});
+  return !!$res->matched_count;
 }
 
 sub _worker_info {
@@ -256,8 +421,8 @@ sub _worker_info {
     id       => $worker->{_id},
     jobs     => [map { $_->{_id} } $cursor->all],
     pid      => $worker->{pid},
-    started  => $worker->{started}->hires_epoch,
-    notified => $worker->{notified}->hires_epoch
+    started  => $worker->{started}->epoch,
+    notified => $worker->{notified}->epoch
   };
 }
 
