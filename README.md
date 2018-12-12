@@ -197,10 +197,11 @@ Get information about a worker or return `undef` if worker does not exist.
 # AUTHOR
 
 Andrey Khozov <avkhozov@gmail.com>
+Emiliano Bruni <info@ebruni.it>
 
 # LICENSE
 
-Copyright (C) 2015, Andrey Khozov.
+Copyright (C) 2015, Andrey Khozov, Emiliano Bruni.
 
 This library is free software; you can redistribute it and/or modify it under the same terms as Perl itself.
 
