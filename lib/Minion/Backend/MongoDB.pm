@@ -8,6 +8,7 @@ use DateTime;
 use Mojo::URL;
 use BSON::ObjectId;
 use MongoDB;
+use Mojo::IOLoop;
 use Scalar::Util 'weaken';
 use Sys::Hostname 'hostname';
 use Tie::IxHash;
@@ -18,7 +19,6 @@ has jobs          => sub { $_[0]->mongodb->coll($_[0]->prefix . '.jobs') };
 has notifications => sub { $_[0]->mongodb->coll($_[0]->prefix . '.notifications') };
 has prefix        => 'minion';
 has workers       => sub { $_[0]->mongodb->coll($_[0]->prefix . '.workers') };
-#has minion        => sub { $_[0]->on_minion_set(@_) };
 
 sub dequeue {
   my ($self, $oid) = @_;
@@ -103,11 +103,8 @@ sub list_jobs {
 
   my $cursor = $self->jobs->aggregate($aggregate);
 
-  #print Data::Dumper::Dumper($options);
-  #print Data::Dumper::Dumper($match);
   my $jobs = [map { {id => $_->{_id}, %$_} } $cursor->all];
   my $ret = { total => scalar(@$jobs), jobs => $jobs};
-  #print Data::Dumper::Dumper($ret);
   return $ret;
 }
 
@@ -123,7 +120,6 @@ sub list_jobs {
 #  )->hashes->to_array;
 #  return _total('locks', $locks);
 #}
-
 
 sub list_workers {
   my ($self, $skip, $limit) = @_;
@@ -148,42 +144,13 @@ sub new {
     socket_timeout_ms   => 300000,
   );
   my $db = $client->db($client->db_name);
-  return $class->SUPER::new(mongodb => $db);
-}
 
-
-#sub minion {
-#  say qq(New minion set);
-#}
-
-sub minion {
-  # every time worker dequeue we must reconnect db
-  my ($self, $minion)      = @_;
-
-  return $self->{minion} unless $minion;
-
-  $self->{minion} = $minion;
-  weaken $self->{minion};
-
-  #say qq("New minion set");
-
-  $minion->on(worker => sub {
-      my ($minion, $worker) = @_;
-      #$worker->on(dequeue => sub {
-      #    my ($worker, $job, $pid) = @_;
-      #    my ($id, $task) = ($job->id, $job->task);
-      #    say qq{Process $pid is performing job "$id" with task "$task" - Reconnect DB};
-      #    #say qq{Reconnect DB};
-      #    $worker->self->mongodb->client->reconnect();
-      #})
-      $worker->on(dequeue => sub { pop->once(spawn => \&_spawn) } );
+  my $self = $class->SUPER::new(mongodb => $db);
+  Mojo::IOLoop->singleton->on(reset => sub {
+      $self->mongodb->client->reconnect();
   });
-}
-sub _spawn {
-  my ($job, $pid) = @_;
-  my ($id, $task) = ($job->id, $job->task);
-  #say qq{Process $pid is performing job "$id" with task "$task" - Reconnect DB};
-  $job->minion->backend->mongodb->client->reconnect();
+
+  return $self;
 }
 
 sub note {
@@ -201,14 +168,6 @@ sub note {
 
 sub receive {
   my ($self, $id) = @_;
-  #my $array = shift->pg->db->query(
-  #  "update minion_workers as new set inbox = '[]'
-  #   from (select id, inbox from minion_workers where id = ? for update)
-  #   as old
-  #   where new.id = old.id and old.inbox != '[]'
-  #   returning old.inbox", shift
-  #)->expand->array;
-
   my $oldrec = $self->workers->find_one_and_update(
     {_id => $id, inbox => { '$exists' => 1, '$ne' => [] } },
     {'$set' => {inbox => [] }},
@@ -220,7 +179,6 @@ sub receive {
 
   return $oldrec ? $oldrec->inbox // [] : [];
 }
-
 
 sub register_worker {
   my ($self, $id, $options) = @_;
@@ -368,17 +326,6 @@ sub _notifications {
 sub _try {
   my ($self, $oid) = @_;
 
-  #my $doc = {
-  #  query => Tie::IxHash->new(
-  #    delayed => {'$lt' => DateTime->from_epoch(epoch => time)},
-  #    state   => 'inactive',
-  #    task => {'$in' => [keys %{$self->minion->tasks}]}
-  #  ),
-  #  fields => {args     => 1, task => 1},
-  #  sort   => {priority => -1},
-  #  update => {'$set' => {started => DateTime->from_epoch(epoch => time), state => 'active', worker => $oid}},
-  #  new    => 1
-  #};
   my $doc = [
     Tie::IxHash->new(
       delayed => {'$lt' => DateTime->from_epoch(epoch => time)},
@@ -643,7 +590,7 @@ Andrey Khozov E<lt>avkhozov@gmail.comE<gt>
 
 =head1 LICENSE
 
-Copyright (C) 2015, Andrey Khozov.
+Copyright (C) 2015, Andrey Khozov, Emiliano Bruni.
 
 This library is free software; you can redistribute it and/or modify it under the same terms as Perl itself.
 

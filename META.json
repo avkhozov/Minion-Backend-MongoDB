@@ -1,7 +1,8 @@
 {
    "abstract" : "MongoDB backend for Minion",
    "author" : [
-      "Andrey Khozov <avkhozov@gmail.com>"
+      "Andrey Khozov <avkhozov@gmail.com>",
+      "Emiliano Bruni <info@ebruni.it>"
    ],
    "dynamic_config" : 0,
    "generated_by" : "Minilla/v2.4.1, CPAN::Meta::Converter version 2.141170",
@@ -42,8 +43,9 @@
       },
       "runtime" : {
          "requires" : {
-            "Minion" : "1.15",
-            "MongoDB" : "0"
+            "Minion" : "9.00",
+            "MongoDB" : "2.0",
+            "Mojolicious" : "8.10"
          }
       },
       "test" : {
@@ -64,6 +66,6 @@
          "web" : "https://github.com/avkhozov/Minion-Backend-MongoDB"
       }
    },
-   "version" : "0.97",
+   "version" : "0.98",
    "x_authority" : "cpan:AVKHOZOV"
 }
