@@ -239,7 +239,8 @@ sub repair {
   # Check worker registry
   my $workers = $self->workers;
 
-  $workers->delete_one({notified => {'$lt' => DateTime->from_epoch(epoch => time - $minion->missing_after)}});
+  $workers->delete_many({notified => {
+      '$lt' => DateTime->from_epoch(epoch => time - $minion->missing_after)}});
 
   # Abandoned jobs
   my $jobs = $self->jobs;
@@ -257,12 +258,13 @@ sub repair {
   }
 
   # Old jobs
-  $jobs->delete_one(
-    {state => 'finished', finished => {'$lt' => DateTime->from_epoch(epoch => time - $minion->remove_after)}}
+  $jobs->delete_many(
+    {state => 'finished', finished => {
+        '$lt' => DateTime->from_epoch(epoch => time - $minion->remove_after)}}
   );
 }
 
-sub reset { $_->drop for $_[0]->workers, $_[0]->jobs }
+sub reset { $_->drop for $_[0]->workers, $_[0]->jobs, $_[0]->locks }
 
 sub retry_job {
   my ($self, $oid) = (shift, shift);
