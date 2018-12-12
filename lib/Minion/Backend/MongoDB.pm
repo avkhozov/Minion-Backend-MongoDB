@@ -7,6 +7,7 @@ use boolean;
 use DateTime;
 use Mojo::URL;
 use BSON::ObjectId;
+use BSON::Types ':all';
 use MongoDB;
 use Mojo::IOLoop;
 use Scalar::Util 'weaken';
@@ -19,6 +20,7 @@ has jobs          => sub { $_[0]->mongodb->coll($_[0]->prefix . '.jobs') };
 has notifications => sub { $_[0]->mongodb->coll($_[0]->prefix . '.notifications') };
 has prefix        => 'minion';
 has workers       => sub { $_[0]->mongodb->coll($_[0]->prefix . '.workers') };
+has locks         => sub { $_[0]->mongodb->coll($_[0]->prefix . '.locks') };
 
 sub dequeue {
   my ($self, $oid) = @_;
@@ -100,7 +102,6 @@ sub list_jobs {
 
   my $aggregate = [$match, $lookup, $skip, $limit, $sort, $project];
 
-
   my $cursor = $self->jobs->aggregate($aggregate);
 
   my $jobs = [map { {id => $_->{_id}, %$_} } $cursor->all];
@@ -108,18 +109,39 @@ sub list_jobs {
   return $ret;
 }
 
-# da implementare
-#sub list_locks {
-#  my ($self, $offset, $limit, $options) = @_;
+sub list_locks {
+  my ($self, $offset, $limit, $options) = @_;
 
-#  my $locks = $self->pg->db->query(
-#    'select name, extract(epoch from expires) as expires,
-#       count(*) over() as total from minion_locks
-#     where expires > now() and (name = any ($1) or $1 is null)
-#     order by id desc limit $2 offset $3', $options->{names}, $limit, $offset
-#  )->hashes->to_array;
-#  return _total('locks', $locks);
-#}
+  my %aggregate;
+  my $imatch    = {};
+  $imatch->{expires} = {'$gt' => bson_time()};
+  foreach (qw(name)) {
+      $imatch->{$_} = {'$in' => $options->{$_}} if $options->{$_};
+  }
+  $aggregate{match}     = { '$match' => $imatch };
+  $aggregate{skip}      = { '$skip'     => $offset // 0 },
+  $aggregate{limit}     = { '$limit'    => $limit } if ($limit);
+
+  my $iproject  = {};
+  foreach (qw(expires)) {
+        $iproject->{$_} = {'$toLong' => {'$multiply' => [{
+            '$convert' => { 'input' => '$'. $_, to => 'long'}}, 0.001]}};
+  }
+  foreach (qw(name)) {
+        $iproject->{$_} = 1;
+  }
+  $aggregate{project}   = { '$project' => $iproject};
+  $aggregate{sort}      = { '$sort'     => { _id => -1 } };
+
+  my @aggregate = grep defined, map {$aggregate{$_}}
+   qw(match skip limit sort project);
+
+  my $cursor = $self->locks->aggregate(\@aggregate);
+
+  my $locks = [$cursor->all];
+
+  return _total('locks', $locks);
+}
 
 sub list_workers {
   my ($self, $skip, $limit) = @_;
@@ -131,8 +153,9 @@ sub list_workers {
 
 sub _total {
   my ($name, $results) = @_;
-  my $total = @$results ? $results->[0]{total} : 0;
-  delete $_->{total} for @$results;
+  #my $total = @$results ? $results->[0]{total} : 0;
+  #delete $_->{total} for @$results;
+  my $total = @$results ? scalar(@$results) : 0;
   return {total => $total, $name => $results};
 }
 
@@ -189,6 +212,7 @@ sub register_worker {
     {_id => $id}, {'$set' => {notified => DateTime->from_epoch(epoch => time)}});
 
   $self->jobs->indexes->create_one(Tie::IxHash->new(state => 1, delayed => 1, task => 1));
+  $self->locks->indexes->create_one(Tie::IxHash->new(name => 1, expires => 1));
   my $res = $self->workers->insert_one(
     { host     => hostname,
       pid      => $$,
@@ -268,6 +292,7 @@ sub stats {
   my $all = $self->workers->count_documents({});
   my $stats = {active_workers => $active, inactive_workers => $all - $active};
   $stats->{"${_}_jobs"} = $jobs->count_documents({state => $_}) for qw(active failed finished inactive);
+  $stats->{active_locks} = $self->list_locks->{total};
   return $stats;
 }
 
