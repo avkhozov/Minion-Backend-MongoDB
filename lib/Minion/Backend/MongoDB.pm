@@ -5,6 +5,8 @@ our $VERSION = '0.98';
 
 use boolean;
 use DateTime;
+use DateTime::Span;
+use DateTime::Set;
 use Mojo::URL;
 use BSON::ObjectId;
 use BSON::Types ':all';
@@ -65,6 +67,64 @@ sub fail_job { shift->_update(1, @_) }
 
 sub finish_job { shift->_update(0, @_) }
 
+sub history {
+  my $self = shift;
+
+  my $dt_stop     = DateTime->now;
+  my $dt_start    = $dt_stop->clone->add(days => -1);
+  my $dt_span     = DateTime::Span->from_datetimes(
+    start => $dt_start,
+    end => $dt_stop
+  );
+  my $dt_set      = DateTime::Set->from_recurrence(
+    recurrence => sub { return $_[0]->truncate(to=>'hour')->add(hours => 1) }
+  );
+  my @dt_set      = $dt_set->as_list(span => $dt_span);
+  my %acc = (map {&_dtkey($_) => {
+      epoch    => $_->epoch(),
+      failed_jobs   => 0,
+      finished_jobs => 0
+  }} @dt_set);
+
+  my $match  = {'$match' => { finished => {'$gt' => $dt_start} } };
+  my $group  = {'$group' => {
+    '_id'  => {
+        hour    => {'$hour' => {date => '$finished'}},
+        day     => {'$dayOfYear' => {date => '$finished'}},
+        year    => {'$year' => {date => '$finished'}}
+    },
+    finished_jobs => {'$sum' => {
+        '$cond' => {if => {'$eq' => ['$state', 'finished']}, then => 1, else => 0}
+    }},
+    failed_jobs => {'$sum' => {
+        '$cond' => {if => {'$eq' => ['$state', 'failed']}, then => 1, else => 0}
+    }}
+  }};
+
+  my $cursor = $self->jobs->aggregate([$match, $group]);
+
+  while (my $doc = $cursor->next) {
+    my $dt_finished = new DateTime(
+        year => $doc->{_id}->{year},
+        month => 1,
+        day => 1,
+        hour => $doc->{_id}->{hour},
+    );
+    $dt_finished->add(days => $doc->{_id}->{day}-1);
+    my $key = &_dtkey($dt_finished);
+    $acc{$key}->{$_} += $doc->{$_} for(qw(finished_jobs failed_jobs));
+  }
+
+  my @k = sort keys(%acc);
+
+  return {daily => [@acc{(sort keys(%acc))}]};
+
+}
+
+sub _dtkey {
+    return substr($_[0]->datetime, 0, -6);
+}
+
 sub job_info { $_[0]->_job_info($_[0]->jobs->find_one({_id => BSON::OID->new(oid => "$_[1]")})); }
 
 sub list_jobs {
@@ -84,8 +144,8 @@ sub list_jobs {
       foreignField  => 'parents',
       as            => 'children'
   }};
-  my $skip      = { '$skip'     => $lskip },
-  my $limit     = { '$limit'    => $llimit },
+  my $skip      = { '$skip'     => 0 + $lskip },
+  my $limit     = { '$limit'    => 0 + $llimit },
   my $sort      = { '$sort'     => { _id => -1 } };
   my $iproject  = {};
   foreach (qw(_id args attempts children notes priority queue result
@@ -104,11 +164,11 @@ sub list_jobs {
 
   my $aggregate = [$match, $lookup, $skip, $limit, $sort, $project];
 
-  my $cursor = $self->jobs->aggregate($aggregate);
+  my $cursor    = $self->jobs->aggregate($aggregate);
+  my $total     = $self->jobs->count_documents($imatch);
 
   my $jobs = [map { {id => $_->{_id}, %$_} } $cursor->all];
-  my $ret = { total => scalar(@$jobs), jobs => $jobs};
-  return $ret;
+  return _total('jobs', $jobs, $total);
 }
 
 sub list_locks {
@@ -138,27 +198,28 @@ sub list_locks {
   my @aggregate = grep defined, map {$aggregate{$_}}
    qw(match skip limit sort project);
 
-  my $cursor = $self->locks->aggregate(\@aggregate);
+  my $cursor    = $self->locks->aggregate(\@aggregate);
+  my $total     = $self->locks->count_documents($imatch);
 
   my $locks = [$cursor->all];
 
-  return _total('locks', $locks);
+  return _total('locks', $locks, $total);
 }
 
 sub list_workers {
   my ($self, $skip, $limit) = @_;
   my $cursor = $self->workers->find({pid => {'$exists' => true}});
+  my $total = scalar($cursor->all);
+  $cursor->reset;
   $cursor->sort({_id => -1})->skip($skip)->limit($limit);
   my $workers =  [map { $self->_worker_info($_) } $cursor->all];
-  return _total('workers', $workers);
+  return _total('workers', $workers, $total);
 }
 
 sub _total {
-  my ($name, $results) = @_;
-  #my $total = @$results ? $results->[0]{total} : 0;
-  #delete $_->{total} for @$results;
-  my $total = @$results ? scalar(@$results) : 0;
-  return {total => $total, $name => $results};
+    my ($name, $res, $tot) = @_;
+    return { total => $tot, $name => $res};
+
 }
 
 sub new {
@@ -214,6 +275,7 @@ sub register_worker {
     {_id => $id}, {'$set' => {notified => DateTime->from_epoch(epoch => time)}});
 
   $self->jobs->indexes->create_one(Tie::IxHash->new(state => 1, delayed => 1, task => 1));
+  $self->jobs->indexes->create_one(Tie::IxHash->new(finished => 1));
   $self->locks->indexes->create_one(Tie::IxHash->new(name => 1, expires => 1));
   my $res = $self->workers->insert_one(
     { host     => hostname,
@@ -231,7 +293,7 @@ sub register_worker {
 sub remove_job {
   my ($self, $oid) = @_;
   my $doc = {_id => $oid, state => {'$in' => [qw(failed finished inactive)]}};
-  return !!$self->jobs->remove($doc)->{n};
+  return $self->jobs->delete_one($doc)->deleted_count;
 }
 
 sub repair {
