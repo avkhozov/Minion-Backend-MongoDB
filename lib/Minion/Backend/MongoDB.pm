@@ -15,12 +15,14 @@ use Sys::Hostname 'hostname';
 use Tie::IxHash;
 use Time::HiRes 'time';
 
+has 'dbclient';
 has 'mongodb';
 has jobs          => sub { $_[0]->mongodb->coll($_[0]->prefix . '.jobs') };
 has notifications => sub { $_[0]->mongodb->coll($_[0]->prefix . '.notifications') };
 has prefix        => 'minion';
 has workers       => sub { $_[0]->mongodb->coll($_[0]->prefix . '.workers') };
 has locks         => sub { $_[0]->mongodb->coll($_[0]->prefix . '.locks') };
+has admin         => sub { $_[0]->dbclient->db('admin') };
 
 sub dequeue {
   my ($self, $oid) = @_;
@@ -168,7 +170,7 @@ sub new {
   );
   my $db = $client->db($client->db_name);
 
-  my $self = $class->SUPER::new(mongodb => $db);
+  my $self = $class->SUPER::new(dbclient => $client, mongodb => $db);
   Mojo::IOLoop->singleton->on(reset => sub {
       $self->mongodb->client->reconnect();
   });
@@ -295,6 +297,14 @@ sub stats {
   my $stats = {active_workers => $active, inactive_workers => $all - $active};
   $stats->{"${_}_jobs"} = $jobs->count_documents({state => $_}) for qw(active failed finished inactive);
   $stats->{active_locks} = $self->list_locks->{total};
+  $stats->{delayed_jobs} = $self->jobs->count_documents({
+      state => 'inactive',
+      delayed => {'$gt' => bson_time}
+  });
+  # I don't know if this value is correct as calculated. PG use the incremental
+  # sequence id
+  $stats->{enqueued_jobs} += $stats->{"${_}_jobs"} for qw(active failed finished inactive);
+  $stats->{uptime} = $self->admin->run_command(Tie::IxHash->new('serverStatus' => 1))->{uptime};
   return $stats;
 }
 
@@ -611,9 +621,29 @@ Unregister worker.
 
 Get information about a worker or return C<undef> if worker does not exist.
 
-=head1 AUTHOR
+=head1 NOTES ABOUT USER
+
+User must have this roles
+
+  "roles" : [
+                {
+                        "role" : "dbAdmin",
+                        "db" : "minion"
+                },
+                {
+                        "role" : "clusterMonitor",
+                        "db" : "admin"
+                },
+                {
+                        "role" : "readWrite",
+                        "db" : "minion"
+                }
+        ]
+
+=head1 AUTHORS
 
 Andrey Khozov E<lt>avkhozov@gmail.comE<gt>
+Emiliano Bruni E<lt>info@ebruni.itE<gt>
 
 =head1 LICENSE
 
