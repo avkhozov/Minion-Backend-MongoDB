@@ -26,6 +26,15 @@ has workers       => sub { $_[0]->mongodb->coll($_[0]->prefix . '.workers') };
 has locks         => sub { $_[0]->mongodb->coll($_[0]->prefix . '.locks') };
 has admin         => sub { $_[0]->dbclient->db('admin') };
 
+# TODO: Da Implementare
+#sub broadcast {
+#  my ($self, $command, $args, $ids) = (shift, shift, shift || [], shift || []);
+#  return !!$self->pg->db->query(
+#    q{update minion_workers set inbox = inbox || $1::jsonb
+#      where (id = any ($2) or $2 = '{}')}, {json => [[$command, @$args]]}, $ids
+#  )->rows;
+#}
+
 sub dequeue {
   my ($self, $oid) = @_;
 
@@ -216,10 +225,9 @@ sub list_workers {
   return _total('workers', $workers, $total);
 }
 
-sub _total {
-    my ($name, $res, $tot) = @_;
-    return { total => $tot, $name => $res};
-
+sub lock {
+  my ($s, $name, $duration, $options) = (shift, shift, shift, shift // {});
+  return $s->_lock($name, $duration, $options->{limit}||1);
 }
 
 sub new {
@@ -249,7 +257,7 @@ sub note {
         upsert    => 0,
         returnDocument => 'after',
     }
-  )
+  ) ? 1 : 0;
 }
 
 sub receive {
@@ -293,7 +301,7 @@ sub register_worker {
 sub remove_job {
   my ($self, $oid) = @_;
   my $doc = {_id => $oid, state => {'$in' => [qw(failed finished inactive)]}};
-  return $self->jobs->delete_one($doc)->deleted_count;
+  return !!$self->jobs->delete_one($doc)->deleted_count;
 }
 
 sub repair {
@@ -370,6 +378,16 @@ sub stats {
   return $stats;
 }
 
+sub unlock {
+    my ($s, $name) = @_;
+
+    my $res = $s->locks->delete_many({
+        name => $name,
+        expires => {'$gt' => bson_time()}
+    });
+
+    return !!$res->deleted_count;
+}
 sub unregister_worker { shift->workers->delete_one({_id => shift}) }
 
 sub worker_info { $_[0]->_worker_info($_[0]->workers->find_one({_id => $_[1]})) }
@@ -410,6 +428,24 @@ sub _job_info {
   };
 }
 
+sub _lock {
+    my ($s, $name, $duration, $count) = @_;
+
+    my $dtNow = DateTime->now;
+    my $dtExp = $dtNow->clone->add(seconds => $duration);
+
+    $s->locks->delete_many({expires => {'$lt' => $dtNow}});
+
+    return 0
+        if ($s->locks->count_documents({name => $name}) >= $count );
+
+    $s->locks->insert_one({
+        name => $name, expires => $dtExp
+    }) if ($dtExp > $dtNow);
+
+    return 1;
+}
+
 sub _notifications {
   my $self = shift;
 
@@ -420,6 +456,11 @@ sub _notifications {
 
   $self->mongodb->run_command([create => $notifications->name, capped => 1, size => 1048576, max => 128]);
   $notifications->insert_one({});
+}
+
+sub _total {
+    my ($name, $res, $tot) = @_;
+    return { total => $tot, $name => $res};
 }
 
 sub _try {
