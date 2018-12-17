@@ -26,14 +26,16 @@ has workers       => sub { $_[0]->mongodb->coll($_[0]->prefix . '.workers') };
 has locks         => sub { $_[0]->mongodb->coll($_[0]->prefix . '.locks') };
 has admin         => sub { $_[0]->dbclient->db('admin') };
 
-# TODO: Da Implementare
-#sub broadcast {
-#  my ($self, $command, $args, $ids) = (shift, shift, shift || [], shift || []);
-#  return !!$self->pg->db->query(
-#    q{update minion_workers set inbox = inbox || $1::jsonb
-#      where (id = any ($2) or $2 = '{}')}, {json => [[$command, @$args]]}, $ids
-#  )->rows;
-#}
+sub broadcast {
+  my ($s, $command, $args, $ids) = (shift, shift, shift || [], shift || []);
+
+  my $res = $s->workers->update_one(
+    { _id => {'$in' => $ids} },
+    {inbox => [[$command,@$args]]}
+  );
+
+  return !!$res->matched_count;
+}
 
 sub dequeue {
   my ($self, $oid) = @_;
