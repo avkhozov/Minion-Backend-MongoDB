@@ -6,7 +6,7 @@ plan skip_all => 'set TEST_ONLINE to enable this test' unless $ENV{TEST_ONLINE};
 
 use Minion;
 use MongoDB;
-use MongoDB::OID;
+use BSON::ObjectId;
 use Sys::Hostname 'hostname';
 use Time::HiRes 'time';
 
@@ -43,7 +43,7 @@ undef $worker2;
 is $job->info->{state}, 'active', 'job is still active';
 my $doc = $workers->find_one({_id => $id});
 ok $doc, 'is registered';
-$minion->backend->workers->update({_id => $id},
+$minion->backend->workers->update_one({_id => $id},
   {'$set' => {notified => DateTime->from_epoch(epoch => time - $minion->missing_after - 1)}});
 $minion->repair;
 ok !$minion->backend->worker_info($id), 'not registered';
@@ -68,11 +68,11 @@ my $id2 = $minion->enqueue('test');
 my $id3 = $minion->enqueue('test');
 $worker->dequeue(0)->perform for 1 .. 3;
 $doc = $jobs->find_one({_id => $id2});
-$doc->{finished} = DateTime->from_epoch(epoch => $doc->{finished}->hires_epoch - 864001);
-$jobs->save($doc);
+$doc->{finished} = DateTime->from_epoch(epoch => $doc->{finished}->epoch - 864001);
+$jobs->update_one({_id => $doc->{_id}}, {'$set' => $doc});
 $doc = $jobs->find_one({_id => $id3});
-$doc->{finished} = DateTime->from_epoch(epoch => $doc->{finished}->hires_epoch - 864001);
-$jobs->save($doc);
+$doc->{finished} = DateTime->from_epoch(epoch => $doc->{finished}->epoch - 864001);
+$jobs->update_one({_id => $doc->{_id}}, {'$set' => $doc});
 $worker->unregister;
 $minion->repair;
 ok $minion->job($id), 'job has not been cleaned up';
@@ -82,17 +82,17 @@ ok !$minion->job($id3), 'job has been cleaned up';
 # List workers
 $worker  = $minion->worker->register;
 $worker2 = $minion->worker->register;
-my $batch = $minion->backend->list_workers(0, 10);
+my $batch = $minion->backend->list_workers(0, 10)->{workers};
 ok $batch->[0]{id},   'has id';
 is $batch->[0]{host}, hostname, 'right host';
 is $batch->[0]{pid},  $$, 'right pid';
 is $batch->[1]{host}, hostname, 'right host';
 is $batch->[1]{pid},  $$, 'right pid';
 ok !$batch->[2], 'no more results';
-$batch = $minion->backend->list_workers(0, 1);
+$batch = $minion->backend->list_workers(0, 1)->{workers};
 is $batch->[0]{id}, $worker2->id, 'right id';
 ok !$batch->[1], 'no more results';
-$batch = $minion->backend->list_workers(1, 1);
+$batch = $minion->backend->list_workers(1, 1)->{workers};
 is $batch->[0]{id}, $worker->id, 'right id';
 ok !$batch->[1], 'no more results';
 $worker->unregister;
@@ -115,13 +115,10 @@ SKIP: {
 }
 
 # Tasks
-my $add = $jobs->insert({results => []});
 $minion->add_task(
   add => sub {
     my ($job, $first, $second) = @_;
-    my $doc = $job->minion->backend->jobs->find_one({_id => $add});
-    push @{$doc->{results}}, $first + $second;
-    $job->minion->backend->jobs->save($doc);
+    $job->finish($first + $second);
   }
 );
 $minion->add_task(fail => sub { die "Intentional failure!\n" });
@@ -170,7 +167,7 @@ is $stats->{inactive_jobs},    0, 'no inactive jobs';
 
 # List jobs
 $id = $minion->enqueue('add');
-$batch = $minion->backend->list_jobs(0, 10);
+$batch = $minion->backend->list_jobs(0, 10)->{jobs};
 ok $batch->[0]{id},      'has id';
 is $batch->[0]{task},    'add', 'right task';
 is $batch->[0]{state},   'inactive', 'right state';
@@ -185,26 +182,26 @@ is $batch->[3]{task},    'fail', 'right task';
 is $batch->[3]{state},   'finished', 'right state';
 is $batch->[3]{retries}, 0, 'job has not been retried';
 ok !$batch->[4], 'no more results';
-$batch = $minion->backend->list_jobs(0, 10, {state => 'inactive'});
+$batch = $minion->backend->list_jobs(0, 10, {state => 'inactive'})->{jobs};
 is $batch->[0]{state},   'inactive', 'right state';
 is $batch->[0]{retries}, 0,          'job has not been retried';
 ok !$batch->[1], 'no more results';
-$batch = $minion->backend->list_jobs(0, 10, {task => 'add'});
+$batch = $minion->backend->list_jobs(0, 10, {task => 'add'})->{jobs};
 is $batch->[0]{task},    'add', 'right task';
 is $batch->[0]{retries}, 0,     'job has not been retried';
 ok !$batch->[1], 'no more results';
-$batch = $minion->backend->list_jobs(0, 1);
+$batch = $minion->backend->list_jobs(0, 1)->{jobs};
 is $batch->[0]{state},   'inactive', 'right state';
 is $batch->[0]{retries}, 0,          'job has not been retried';
 ok !$batch->[1], 'no more results';
-$batch = $minion->backend->list_jobs(1, 1);
+$batch = $minion->backend->list_jobs(1, 1)->{jobs};
 is $batch->[0]{state},   'finished', 'right state';
 is $batch->[0]{retries}, 1,          'job has been retried';
 ok !$batch->[1], 'no more results';
 ok $minion->job($id)->remove, 'job removed';
 
 # Enqueue, dequeue and perform
-is $minion->job(MongoDB::OID->new), undef, 'job does not exist';
+is $minion->job(BSON::ObjectId->new), undef, 'job does not exist';
 $id = $minion->enqueue(add => [2, 2]);
 my $info = $minion->job($id)->info;
 is $info->{task}, 'add', 'right task';
@@ -225,7 +222,8 @@ is $minion->backend->worker_info($id)->{pid}, $$, 'right worker';
 ok !$job->info->{finished}, 'no finished timestamp';
 $job->perform;
 like $job->info->{finished}, qr/^[\d.]+$/, 'has finished timestamp';
-is_deeply $jobs->find_one({_id => $add})->{results}, [4], 'right result';
+is_deeply $jobs->find_one({_id => BSON::ObjectId->new($job->id)})->{result}, 4, 'right result via db';
+is_deeply $job->info->{result}, 4, 'right result via job info';
 is $job->info->{state}, 'finished', 'right state';
 $worker->unregister;
 $job = $minion->job($job->id);

@@ -355,7 +355,8 @@ sub retry_job {
     '$unset' => {map { $_ => '' } qw(finished result started worker)}
   };
 
-  return !!$self->jobs->update($query, $update)->{n};
+  my $res = $self->jobs->update_one($query, $update);
+  return !!$res->matched_count;
 }
 
 sub stats {
@@ -492,7 +493,7 @@ sub _update {
   my $update = {
       finished => DateTime->from_epoch(epoch => time),
       state => $fail ? 'failed' : 'finished',
-      result => $result,
+      result => $fail ?  $result . '' : $result ,
   };
   my $query = {_id => $oid, state => 'active', retries => $retries};
   my $res = $self->jobs->update_one($query, {'$set' => $update});
