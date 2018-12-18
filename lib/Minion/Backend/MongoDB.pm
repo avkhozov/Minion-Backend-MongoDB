@@ -38,17 +38,26 @@ sub broadcast {
 }
 
 sub dequeue {
-  my ($self, $oid) = @_;
+  my ($self, $oid, $wait, $options) = @_;
+
+  if ((my $job = $self->_try($oid, $options))) { return $job }
+  return undef if Mojo::IOLoop->is_running;
 
   # Capped collection for notifications
   $self->_notifications;
 
-  # Await notifications
-  $self->_await;
-  my $job = $self->_try($oid);
+  my $timer = Mojo::IOLoop->timer($wait => sub { Mojo::IOLoop->stop });
+  Mojo::IOLoop->subprocess(
+    sub {
+        sleep 1 until $self->_await;
+        Mojo::IOLoop->stop;
+    }
+  );
+  Mojo::IOLoop->start;
+  Mojo::IOLoop->remove($timer);
 
-  return undef unless $self->_job_info($job);
-  return {args => $job->{args}, id => $job->{_id}, task => $job->{task}};
+  return $self->_try($oid, $options);
+
 }
 
 sub enqueue {
@@ -399,7 +408,14 @@ sub _await {
   my $self = shift;
 
   my $last = $self->{last} //= BSON::OID->new;
-  my $cursor = $self->notifications->find({_id => {'$gt' => $last}, c => 'created'})->tailable(1);
+  # TODO: Implement update_retries on job update retries field
+  my $cursor = $self->notifications->find({
+    _id => {'$gt' => $last},
+    '$or' =>  [
+        { c => 'created'},
+        { c => 'update_retries'}
+    ]
+  })->tailable(1);
   return undef unless my $doc = $cursor->next || $cursor->next;
   $self->{last} = $doc->{_id};
   return 1;
@@ -467,7 +483,9 @@ sub _total {
 }
 
 sub _try {
-  my ($self, $oid) = @_;
+  my ($self, $oid, $options) = @_;
+
+  # TODO: Implement $options
 
   my $doc = [
     Tie::IxHash->new(
@@ -484,7 +502,10 @@ sub _try {
     }
   ];
 
-  return $self->jobs->find_one_and_update(@$doc);
+  my $job = $self->jobs->find_one_and_update(@$doc);
+  return undef unless ($job->{_id});
+  $job->{id} = $job->{_id};
+  return $job;
 }
 
 sub _update {

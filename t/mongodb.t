@@ -103,16 +103,12 @@ $minion->reset->repair;
 ok !grep { $_ eq $minion->backend->jobs->name } $minion->backend->mongodb->collection_names,    'no jobs';
 ok !grep { $_ eq $minion->backend->workers->name } $minion->backend->mongodb->collection_names, 'no workers';
 
-SKIP: {
-  skip 'Waiting for MongoDB v1.0.0', 2;
-
 # Wait for job
-  my $before = time;
-  $worker = $minion->worker->register;
-  is $worker->dequeue(0.5), undef, 'no jobs yet';
-  ok !!(($before + 0.5) <= time), 'waited for jobs';
-  $worker->unregister;
-}
+my $before = time;
+$worker = $minion->worker->register;
+is $worker->dequeue(0.5), undef, 'no jobs yet';
+ok !!(($before + 0.5) <= time), 'waited for jobs';
+$worker->unregister;
 
 # Tasks
 $minion->add_task(
