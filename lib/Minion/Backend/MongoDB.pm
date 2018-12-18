@@ -350,19 +350,25 @@ sub repair {
 sub reset { $_->drop for $_[0]->workers, $_[0]->jobs, $_[0]->locks }
 
 sub retry_job {
-  my ($self, $oid) = (shift, shift);
-  my $options = shift // {};
+  my ($self, $oid, $retries, $options) = (shift, shift, shift, shift || {});
+  $options->{delay} //= 0;
 
-  my $query = {_id => $oid, state => {'$in' => [qw(failed finished)]}};
+  my $dtNow = DateTime->now();
+
+  my $query = {_id => $oid, retries => $retries};
   my $update = {
     '$inc' => {retries => 1},
     '$set' => {
-      retried => DateTime->from_epoch(epoch => time),
+      retried => $dtNow,
       state   => 'inactive',
-      delayed => DateTime->from_epoch(epoch => $options->{delay} ? time + $options->{delay} : 1)
+      delayed => $dtNow->clone->add(seconds => $options->{delay})
     },
-    '$unset' => {map { $_ => '' } qw(finished result started worker)}
+    #'$unset' => {map { $_ => '' } qw(finished result started worker)}
   };
+
+  foreach(qw(attempts parents priority queue)) {
+      $update->{'$set'}->{$_} = $options->{$_} if (defined $options->{$_});
+  }
 
   my $res = $self->jobs->update_one($query, $update);
   return !!$res->matched_count;
@@ -495,10 +501,10 @@ sub _try {
     ),
     {'$set' => {started => DateTime->from_epoch(epoch => time), state => 'active', worker => $oid}},
     {
-        projection => {args     => 1, task => 1},
-        sort   => {priority => -1},
-        upsert    => 0,
-        returnDocument => 'after',
+        projection      => {args => 1, retries => 1, task => 1},
+        sort            => {priority => -1},
+        upsert          => 0,
+        returnDocument  => 'after',
     }
   ];
 
@@ -512,13 +518,20 @@ sub _update {
   my ($self, $fail, $oid, $retries, $result) = @_;
 
   my $update = {
-      finished => DateTime->from_epoch(epoch => time),
+      finished => DateTime->now,
       state => $fail ? 'failed' : 'finished',
       result => $fail ?  $result . '' : $result ,
   };
   my $query = {_id => $oid, state => 'active', retries => $retries};
-  my $res = $self->jobs->update_one($query, {'$set' => $update});
-  return !!$res->matched_count;
+  my $res = $self->jobs->update_many($query, {'$set' => $update});
+
+  return undef unless ($res->matched_count);
+
+  return 1 if !$fail || (my $attempts = $res->matched_count) == 1;
+  return 1 if $retries >= ($attempts - 1);
+  my $delay = $self->minion->backoff->($retries);
+  return $self->retry_job($oid, $retries, {delay => $delay});
+  #return !!$res->matched_count;
 }
 
 sub _worker_info {
