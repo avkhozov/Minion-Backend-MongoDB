@@ -183,7 +183,7 @@ sub list_jobs {
   $iproject->{total} = { '$size' => '$children'};
   my $project   = { '$project' => $iproject};
 
-  my $aggregate = [$match, $lookup, $skip, $limit, $sort, $project];
+  my $aggregate = [$match, $lookup, $sort, $skip, $limit, $project];
 
   my $cursor    = $self->jobs->aggregate($aggregate);
   my $total     = $self->jobs->count_documents($imatch);
@@ -364,7 +364,7 @@ sub retry_job {
       state   => 'inactive',
       delayed => $dtNow->clone->add(seconds => $options->{delay})
     },
-    #'$unset' => {map { $_ => '' } qw(finished result started worker)}
+    '$unset' => {map { $_ => '' } qw(finished result started worker)}
   };
 
   foreach(qw(attempts parents priority queue)) {
