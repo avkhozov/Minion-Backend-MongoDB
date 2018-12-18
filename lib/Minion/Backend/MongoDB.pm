@@ -74,7 +74,8 @@ sub enqueue {
     delayed => DateTime->from_epoch(epoch => $options->{delay} ? time + $options->{delay} : 1),
     priority => $options->{priority} // 0,
     state    => 'inactive',
-    task     => $task
+    task     => $task,
+    retries  => 0
   };
 
   my $res = $self->jobs->insert_one($doc);
@@ -531,7 +532,6 @@ sub _update {
   return 1 if $retries >= ($attempts - 1);
   my $delay = $self->minion->backoff->($retries);
   return $self->retry_job($oid, $retries, {delay => $delay});
-  #return !!$res->matched_count;
 }
 
 sub _worker_info {
