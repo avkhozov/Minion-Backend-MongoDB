@@ -397,12 +397,12 @@ sub stats {
 sub unlock {
     my ($s, $name) = @_;
 
-    my $res = $s->locks->delete_many({
+    my $doc = $s->locks->find_one_and_delete({
         name => $name,
         expires => {'$gt' => bson_time()}
-    });
+    }, { sort => {expires => 1} } );
 
-    return !!$res->deleted_count;
+    return defined($doc);
 }
 sub unregister_worker { shift->workers->delete_one({_id => shift}) }
 
