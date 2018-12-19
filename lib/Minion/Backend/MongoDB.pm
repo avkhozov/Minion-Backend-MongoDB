@@ -290,7 +290,10 @@ sub register_worker {
   return $id
     if $id
     && $self->workers->find_one_and_update(
-    {_id => $id}, {'$set' => {notified => DateTime->from_epoch(epoch => time)}});
+    {_id => $id}, {'$set' => {
+        notified => DateTime->from_epoch(epoch => time),
+        status => $options->{status} // {}
+    }});
 
   $self->jobs->indexes->create_one(Tie::IxHash->new(state => 1, delayed => 1, task => 1));
   $self->jobs->indexes->create_one(Tie::IxHash->new(finished => 1));
