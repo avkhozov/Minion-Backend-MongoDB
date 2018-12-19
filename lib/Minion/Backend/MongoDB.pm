@@ -47,12 +47,9 @@ sub dequeue {
   $self->_notifications;
 
   my $timer = Mojo::IOLoop->timer($wait => sub { Mojo::IOLoop->stop });
-  Mojo::IOLoop->subprocess(
-    sub {
-        sleep 1 until $self->_await;
-        Mojo::IOLoop->stop;
-    }
-  );
+  Mojo::IOLoop->recurring(1 => sub {
+      Mojo::IOLoop->stop if ($self->_await)
+  });
   Mojo::IOLoop->start;
   Mojo::IOLoop->remove($timer);
 

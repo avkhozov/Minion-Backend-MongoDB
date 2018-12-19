@@ -30,6 +30,7 @@ is $worker->register->info->{host}, hostname, 'right host';
 is $worker->info->{pid}, $$, 'right pid';
 is $worker->unregister->info, undef, 'no information';
 
+
 # Repair missing worker
 $minion->add_task(test => sub { });
 my $worker2 = $minion->worker->register;
