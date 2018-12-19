@@ -13,8 +13,8 @@ use Time::HiRes 'time';
 # Clean up before start
 my $minion = Minion->new(MongoDB => $ENV{TEST_ONLINE});
 is $minion->backend->prefix, 'minion', 'right prefix';
-my $workers = $minion->backend->workers;
 my $jobs    = $minion->backend->prefix('jobs_test')->jobs;
+my $workers = $minion->backend->workers;
 is $jobs->name, 'jobs_test.jobs', 'right name';
 $minion->reset;
 
