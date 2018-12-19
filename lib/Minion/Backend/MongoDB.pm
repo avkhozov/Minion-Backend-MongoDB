@@ -225,11 +225,12 @@ sub list_locks {
 }
 
 sub list_workers {
-  my ($self, $skip, $limit) = @_;
+  my ($self, $offset, $limit, $options) = @_;
+
   my $cursor = $self->workers->find({pid => {'$exists' => true}});
   my $total = scalar($cursor->all);
   $cursor->reset;
-  $cursor->sort({_id => -1})->skip($skip)->limit($limit);
+  $cursor->sort({_id => -1})->skip($offset)->limit($limit);
   my $workers =  [map { $self->_worker_info($_) } $cursor->all];
   return _total('workers', $workers, $total);
 }
@@ -536,14 +537,20 @@ sub _worker_info {
 
   return undef unless my $worker = shift;
 
+  # lookup jobs
   my $cursor = $self->jobs->find({state => 'active', worker => $worker->{_id}});
+
+  # TODO: lookup sub workers
+
   return {
     host     => $worker->{host},
     id       => $worker->{_id},
     jobs     => [map { $_->{_id} } $cursor->all],
     pid      => $worker->{pid},
     started  => $worker->{started}->epoch,
-    notified => $worker->{notified}->epoch
+    notified => $worker->{notified}->epoch,
+    inbox    => $worker->{inbox},
+    status   => $worker->{status},
   };
 }
 
