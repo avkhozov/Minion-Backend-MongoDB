@@ -264,9 +264,14 @@ sub new {
 sub note {
   my ($self, $id, $merge) = @_;
 
-  return $self->workers->find_one_and_update(
+  return 1 unless defined($merge);
+  my $set = {};
+  while (my ($k, $v) = each %$merge) {
+      $set->{"notes.$k"} = $v;
+  };
+  return $self->jobs->find_one_and_update(
     {_id => $id},
-    {'$set' => {notes => $merge}},
+    {'$set' => $set},
     {
         upsert    => 0,
         returnDocument => 'after',
