@@ -68,11 +68,15 @@ sub enqueue {
   my $doc = {
     args    => $args,
     created => DateTime->from_epoch(epoch => time),
-    delayed => DateTime->from_epoch(epoch => $options->{delay} ? time + $options->{delay} : 1),
+    delayed  => DateTime->now()->add(seconds => $options->{delay} // 0),
     priority => $options->{priority} // 0,
     state    => 'inactive',
     task     => $task,
-    retries  => 0
+    retries  => 0,
+    attempts => $options->{attempts} // 1,
+    notes    => $options->{notes} || {},
+    parents  => $options->{parents} || [],
+    queue    => $options->{queue} // 'default',
   };
 
   my $res = $self->jobs->insert_one($doc);
