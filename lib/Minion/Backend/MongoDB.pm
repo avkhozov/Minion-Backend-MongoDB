@@ -502,13 +502,12 @@ sub _total {
 sub _try {
   my ($self, $oid, $options) = @_;
 
-  # TODO: Implement $options
-
   my $doc = [
     Tie::IxHash->new(
-      delayed => {'$lt' => DateTime->from_epoch(epoch => time)},
-      state   => 'inactive',
-      task => {'$in' => [keys %{$self->minion->tasks}]}
+      delayed   => {'$lt' => DateTime->from_epoch(epoch => time)},
+      state     => 'inactive',
+      task      => {'$in' => [keys %{$self->minion->tasks}]},
+      queue     => {'$in' => $options->{queues} // ['default']}
     ),
     {'$set' => {started => DateTime->from_epoch(epoch => time), state => 'active', worker => $oid}},
     {
