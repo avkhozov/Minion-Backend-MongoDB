@@ -340,17 +340,11 @@ sub repair {
   my $jobs = $self->jobs;
   my $cursor = $jobs->find({state => 'active'});
   while (my $job = $cursor->next) {
-    $jobs->update_one(
-      { _id => $job->{_id}},
-      {'$set' => {
-        finished => DateTime->from_epoch(epoch => time),
-        state    => 'failed',
-        result   => 'Worker went away'
-       }},
-       {upsert => 0}
-    ) unless $workers->find_one({_id => $job->{worker}});
+    $self->fail_job(@$job{qw(_id retries)}, 'Worker went away')
+        unless $workers->count_documents({_id => $job->{worker}});
   }
 
+  # TODO:  Old jobs with no unresolved dependencies
   # Old jobs
   $jobs->delete_many(
     {state => 'finished', finished => {
@@ -374,7 +368,6 @@ sub retry_job {
       state   => 'inactive',
       delayed => $dtNow->clone->add(seconds => $options->{delay})
     },
-    '$unset' => {map { $_ => '' } qw(finished result started worker)}
   };
 
   foreach(qw(attempts parents priority queue)) {
@@ -533,11 +526,12 @@ sub _update {
       result => $fail ?  $result . '' : $result ,
   };
   my $query = {_id => $oid, state => 'active', retries => $retries};
-  my $res = $self->jobs->update_many($query, {'$set' => $update});
+  my $doc = $self->jobs->find_one_and_update($query, {'$set' => $update},
+    {returnDocument => 'after'});
 
-  return undef unless ($res->matched_count);
+  return undef unless ($doc->{attempts});
 
-  return 1 if !$fail || (my $attempts = $res->matched_count) == 1;
+  return 1 if !$fail || (my $attempts = $doc->{attempts}) == 1;
   return 1 if $retries >= ($attempts - 1);
   my $delay = $self->minion->backoff->($retries);
   return $self->retry_job($oid, $retries, {delay => $delay});
