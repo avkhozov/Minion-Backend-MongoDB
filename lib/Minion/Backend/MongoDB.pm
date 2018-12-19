@@ -196,9 +196,9 @@ sub list_locks {
   my $imatch    = {};
   $imatch->{expires} = {'$gt' => bson_time()};
   foreach (qw(name)) {
-      $imatch->{$_} = {'$in' => $options->{$_}} if $options->{$_};
+      $imatch->{$_} = {'$in' => $options->{$_ .'s'} } if $options->{$_.'s'};
   }
-  $aggregate{match}     = { '$match' => $imatch };
+  $aggregate{match}     = { '$match'    => $imatch };
   $aggregate{skip}      = { '$skip'     => $offset // 0 },
   $aggregate{limit}     = { '$limit'    => $limit } if ($limit);
 
@@ -542,8 +542,6 @@ sub _worker_info {
 
   # lookup jobs
   my $cursor = $self->jobs->find({state => 'active', worker => $worker->{_id}});
-
-  # TODO: lookup sub workers
 
   return {
     host     => $worker->{host},
