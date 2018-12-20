@@ -45,7 +45,9 @@
          "requires" : {
             "Minion" : "9.00",
             "MongoDB" : "2.0",
-            "Mojolicious" : "8.10"
+            "Mojolicious" : "8.10",
+            "DateTime::Span" : "0",
+	    "DateTime::Set" : "0"
          }
       },
       "test" : {
