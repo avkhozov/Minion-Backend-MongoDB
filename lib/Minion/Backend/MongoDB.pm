@@ -342,12 +342,19 @@ sub repair {
         unless $workers->count_documents({_id => $job->{worker}});
   }
 
-  # TODO:  Old jobs with no unresolved dependencies
-  # Old jobs
-  $jobs->delete_many(
+  # Old jobs with no unresolved dependencies
+  $cursor = $jobs->find(
     {state => 'finished', finished => {
         '$lt' => DateTime->from_epoch(epoch => time - $minion->remove_after)}}
   );
+
+  while (my $job = $cursor->next) {
+    $jobs->delete_one({_id => $job->{_id}})
+        unless ($self->jobs->count_documents({
+            parents => $job->{_id},
+            state => {'$ne' => 'finished'}
+        }));
+  }
 }
 
 sub reset { $_->drop for $_[0]->workers, $_[0]->jobs, $_[0]->locks }
