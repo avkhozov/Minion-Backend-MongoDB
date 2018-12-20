@@ -479,17 +479,40 @@ sub _total {
 sub _try {
   my ($self, $oid, $options) = @_;
 
+  my $match = Tie::IxHash->new(
+    delayed   => {'$lt' => DateTime->from_epoch(epoch => time)},
+    state     => 'inactive',
+    task      => {'$in' => [keys %{$self->minion->tasks}]},
+    queue     => {'$in' => $options->{queues} // ['default']}
+  );
+  $match->Push('_id' => $options->{id}) if defined $options->{id};
+
+  my $docs = $self->jobs->find($match)->sort({priority => -1, id => 1});
+
+  my $find = 0;
+  my $doc_matched;
+  while ((my $doc = $docs->next) && !$find) {
+    # parents not exits or
+    # exists but are not in inactive, active, failed states
+    $find = !scalar @{$doc->{parents}} ||
+        !$self->jobs->count_documents({
+            _id => {'$in' => $doc->{parents}},
+            state => {'$in' => ['inactive', 'active', 'failed']}
+    });
+    $doc_matched = $doc if $find;
+  }
+
+  return undef unless $doc_matched;
+
   my $doc = [
-    Tie::IxHash->new(
-      delayed   => {'$lt' => DateTime->from_epoch(epoch => time)},
-      state     => 'inactive',
-      task      => {'$in' => [keys %{$self->minion->tasks}]},
-      queue     => {'$in' => $options->{queues} // ['default']}
-    ),
-    {'$set' => {started => DateTime->from_epoch(epoch => time), state => 'active', worker => $oid}},
+    {_id => $doc_matched->{_id}},
+    {'$set' => {
+        started => DateTime->from_epoch(epoch => time),
+        state => 'active',
+        worker => $oid
+    }},
     {
         projection      => {args => 1, retries => 1, task => 1},
-        sort            => {priority => -1},
         upsert          => 0,
         returnDocument  => 'after',
     }
