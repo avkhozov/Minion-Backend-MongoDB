@@ -2,7 +2,7 @@ Revision history for Perl extension Minion-Backend-MongoDB
 
 {{$NEXT}}
 
-0.98 2018-12-11T17:25:45Z (ebruni)
+1.00 2018-12-20T13:06:45Z (ebruni)
 
     - Requires Mojolicious > 8.10
     - Changes to support Minion > 9.0 and MongoDB > 2.0

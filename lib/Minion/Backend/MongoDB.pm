@@ -1,7 +1,7 @@
 package Minion::Backend::MongoDB;
 use Mojo::Base 'Minion::Backend';
 
-our $VERSION = '0.98';
+our $VERSION = '1.00';
 
 use boolean;
 use DateTime;
@@ -805,12 +805,15 @@ User must have this roles
 
 =head1 AUTHORS
 
-Andrey Khozov E<lt>avkhozov@gmail.comE<gt>
+Andrey Khozov E<lt>avkhozov@gmail.comE<gt>,
+
 Emiliano Bruni E<lt>info@ebruni.itE<gt>
 
 =head1 LICENSE
 
-Copyright (C) 2015, Andrey Khozov, Emiliano Bruni.
+Copyright (C) 2015-2017, Andrey Khozov,
+
+Copyright (C) 2018 Andrey Khozov, Emiliano Bruni.
 
 This library is free software; you can redistribute it and/or modify it under the same terms as Perl itself.
 
