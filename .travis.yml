@@ -4,7 +4,8 @@ perl:
 notifications:
   email: false
 env:
-  - "HARNESS_OPTIONS=j9 TEST_ONLINE=mongodb://127.0.0.1:27017/minion"
+  global:
+    - "HARNESS_OPTIONS=j9 TEST_ONLINE=mongodb://127.0.0.1:27017/minion"
   matrix:
     - MONGODB=4.0.0
 matrix:
