@@ -29,9 +29,11 @@ has admin         => sub { $_[0]->dbclient->db('admin') };
 sub broadcast {
   my ($s, $command, $args, $ids) = (shift, shift, shift || [], shift || []);
 
-  my $res = $s->workers->update_one(
-    { _id => {'$in' => $ids} },
-    {inbox => [[$command,@$args]]}
+  my $match = {};
+  $match->{_id} = {'$in' => $ids} if (scalar(@$ids));
+
+  my $res = $s->workers->update_many(
+    $match, {'$push' => {inbox => [$command,@$args]}}
   );
 
   return !!$res->matched_count;
@@ -288,7 +290,7 @@ sub receive {
     }
   );
 
-  return $oldrec ? $oldrec->inbox // [] : [];
+  return $oldrec ? $oldrec->{inbox} // [] : [];
 }
 
 sub register_worker {
