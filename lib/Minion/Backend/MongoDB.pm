@@ -147,8 +147,6 @@ sub _dtkey {
     return substr($_[0]->datetime, 0, -6);
 }
 
-sub job_info { $_[0]->_job_info($_[0]->jobs->find_one({_id => BSON::OID->new(oid => "$_[1]")})); }
-
 sub list_jobs {
   my ($self, $lskip, $llimit, $options) = @_;
 
@@ -161,7 +159,7 @@ sub list_jobs {
 
   my $match     = { '$match' => $imatch };
   my $lookup    = {'$lookup' => {
-      from          => 'minion.jobs',
+      from          => $self->prefix . '.jobs',
       localField    => '_id',
       foreignField  => 'parents',
       as            => 'children'
@@ -189,7 +187,7 @@ sub list_jobs {
   my $cursor    = $self->jobs->aggregate($aggregate);
   my $total     = $self->jobs->count_documents($imatch);
 
-  my $jobs = [map { {id => $_->{_id}, %$_} } $cursor->all];
+  my $jobs = [map $self->_job_info($_), $cursor->all];
   return _total('jobs', $jobs, $total);
 }
 
@@ -435,26 +433,12 @@ sub _job_info {
   my $self = shift;
 
   return undef unless my $job = shift;
-  return {
-    args     => $job->{args},
-    attempts => $job->{attempts} ? $job->{attempts}->value : undef,,
-    created  => $job->{created} ? $job->{created}->value : undef,
-    delayed  => $job->{delayed} ? $job->{delayed}->value : undef,
-    finished => $job->{finished} ? $job->{finished}->value : undef,
-    id       => $job->{_id},
-    priority => $job->{priority},
-    result   => $job->{result},
-    retried  => $job->{retried} ? $job->{retried}->value : undef,
-    retries => $job->{retries} // 0,
-    started => $job->{started} ? $job->{started}->value : undef,
-    state   => $job->{state},
-    task    => $job->{task},
-    parents  => $job->{parents},
-    children  => $job->{children},
-    queue  => $job->{queue},
-    worker  => $job->{worker},
-    total  => $job->{total},
-  };
+
+  $job->{id}        = $job->{_id};
+  $job->{retries} //= 0;
+  $job->{children}  = [map $_->{_id}->hex, @{$job->{children}}];
+
+  return $job;
 }
 
 sub _lock {
