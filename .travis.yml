@@ -8,7 +8,7 @@ env:
   global:
     - "HARNESS_OPTIONS=j9 TEST_ONLINE=mongodb://127.0.0.1:27017/minion"
   matrix:
-    - MONGODB=3.6.6
+    - MONGODB=4.0.0
     - MONGODB=4.1.1
 matrix:
   fast_finish: true
