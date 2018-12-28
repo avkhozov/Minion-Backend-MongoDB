@@ -242,7 +242,6 @@ sub lock {
 
 sub new {
   my ($class, $url) = (shift, shift);
-  print Data::Dumper::Dumper(\@_);
   my $client = MongoDB::MongoClient->new(host => $url, @_);
   my $db = $client->db($client->db_name);
 
@@ -375,6 +374,7 @@ sub retry_job {
   }
 
   my $res = $self->jobs->update_one($query, $update);
+  $self->notifications->insert_one({c => 'update_retries'});
   return !!$res->matched_count;
 }
 
@@ -418,7 +418,6 @@ sub _await {
   my $self = shift;
 
   my $last = $self->{last} //= BSON::OID->new;
-  # TODO: Implement update_retries on job update retries field
   my $cursor = $self->notifications->find({
     _id => {'$gt' => $last},
     '$or' =>  [
