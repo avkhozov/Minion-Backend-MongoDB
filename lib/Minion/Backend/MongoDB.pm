@@ -4,15 +4,14 @@ use Mojo::Base 'Minion::Backend';
 our $VERSION = '1.00';
 
 use boolean;
-use DateTime;
-use DateTime::Span;
-use DateTime::Set;
-use Mojo::URL;
 use BSON::ObjectId;
 use BSON::Types ':all';
-use MongoDB;
+use DateTime;
+use DateTime::Set;
+use DateTime::Span;
 use Mojo::IOLoop;
-use Scalar::Util 'weaken';
+use Mojo::URL;
+use MongoDB;
 use Sys::Hostname 'hostname';
 use Tie::IxHash;
 use Time::HiRes 'time';
@@ -33,7 +32,7 @@ sub broadcast {
   $match->{_id} = {'$in' => $ids} if (scalar(@$ids));
 
   my $res = $s->workers->update_many(
-    $match, {'$push' => {inbox => [$command,@$args]}}
+    $match, {'$push' => {inbox => [$command, @$args]}}
   );
 
   return !!$res->matched_count;
@@ -101,7 +100,7 @@ sub history {
     end => $dt_stop
   );
   my $dt_set      = DateTime::Set->from_recurrence(
-    recurrence => sub { return $_[0]->truncate(to=>'hour')->add(hours => 1) }
+    recurrence => sub { return $_[0]->truncate(to => 'hour')->add(hours => 1) }
   );
   my @dt_set      = $dt_set->as_list(span => $dt_span);
   my %acc = (map {&_dtkey($_) => {
@@ -128,7 +127,7 @@ sub history {
   my $cursor = $self->jobs->aggregate([$match, $group]);
 
   while (my $doc = $cursor->next) {
-    my $dt_finished = new DateTime(
+    my $dt_finished = DateTime->new(
         year => $doc->{_id}->{year},
         month => 1,
         day => 1,
@@ -139,10 +138,7 @@ sub history {
     $acc{$key}->{$_} += $doc->{$_} for(qw(finished_jobs failed_jobs));
   }
 
-  my @k = sort keys(%acc);
-
   return {daily => [@acc{(sort keys(%acc))}]};
-
 }
 
 sub _dtkey {
@@ -241,16 +237,13 @@ sub list_workers {
 
 sub lock {
   my ($s, $name, $duration, $options) = (shift, shift, shift, shift // {});
-  return $s->_lock($name, $duration, $options->{limit}||1);
+  return $s->_lock($name, $duration, $options->{limit} || 1);
 }
 
 sub new {
-  my ($class, $url) = @_;
-  my $client = MongoDB::MongoClient->new(
-    host                => $url,
-    connect_timeout_ms  => 300000,
-    socket_timeout_ms   => 300000,
-  );
+  my ($class, $url) = (shift, shift);
+  print Data::Dumper::Dumper(\@_);
+  my $client = MongoDB::MongoClient->new(host => $url, @_);
   my $db = $client->db($client->db_name);
 
   my $self = $class->SUPER::new(dbclient => $client, mongodb => $db);
@@ -264,7 +257,7 @@ sub new {
 sub note {
   my ($self, $id, $merge) = @_;
 
-  return 1 unless defined($merge);
+  return 1 unless defined $merge;
   my $set = {};
   while (my ($k, $v) = each %$merge) {
       $set->{"notes.$k"} = $v;
@@ -304,7 +297,7 @@ sub register_worker {
         status => $options->{status} // {}
     }});
 
-  $self->jobs->indexes->create_one(Tie::IxHash->new(state => 1, delayed => 1, task => 1));
+  $self->jobs->indexes->create_one(Tie::IxHash->new(state => 1, delayed => 1, task => 1, queue => 1));
   $self->jobs->indexes->create_one(Tie::IxHash->new(finished => 1));
   $self->locks->indexes->create_one(Tie::IxHash->new(name => 1, expires => 1));
   my $res = $self->workers->insert_one(
@@ -365,15 +358,15 @@ sub retry_job {
   my ($self, $oid, $retries, $options) = (shift, shift, shift, shift || {});
   $options->{delay} //= 0;
 
-  my $dtNow = DateTime->now();
+  my $dt_now = DateTime->now();
 
   my $query = {_id => $oid, retries => $retries};
   my $update = {
     '$inc' => {retries => 1},
     '$set' => {
-      retried => $dtNow,
+      retried => $dt_now,
       state   => 'inactive',
-      delayed => $dtNow->clone->add(seconds => $options->{delay})
+      delayed => $dt_now->clone->add(seconds => $options->{delay})
     },
   };
 
@@ -415,7 +408,7 @@ sub unlock {
         expires => {'$gt' => bson_time()}
     }, { sort => {expires => 1} } );
 
-    return defined($doc);
+    return defined $doc ;
 }
 sub unregister_worker { shift->workers->delete_one({_id => shift}) }
 
@@ -453,17 +446,17 @@ sub _job_info {
 sub _lock {
     my ($s, $name, $duration, $count) = @_;
 
-    my $dtNow = DateTime->now;
-    my $dtExp = $dtNow->clone->add(seconds => $duration);
+    my $dt_now = DateTime->now;
+    my $dt_exp = $dt_now->clone->add(seconds => $duration);
 
-    $s->locks->delete_many({expires => {'$lt' => $dtNow}});
+    $s->locks->delete_many({expires => {'$lt' => $dt_now}});
 
     return 0
         if ($s->locks->count_documents({name => $name}) >= $count );
 
     $s->locks->insert_one({
-        name => $name, expires => $dtExp
-    }) if ($dtExp > $dtNow);
+        name => $name, expires => $dt_exp
+    }) if ($dt_exp > $dt_now);
 
     return 1;
 }
@@ -635,6 +628,14 @@ L<MongoDB::Collection> object for C<workers> collection, defaults to one based o
 
 L<Minion::Backend::MongoDB> inherits all methods from L<Minion::Backend> and implements the following new ones.
 
+=head2 broadcast
+
+  my $bool = $backend->broadcast('some_command');
+  my $bool = $backend->broadcast('some_command', [@args]);
+  my $bool = $backend->broadcast('some_command', [@args], [$id1, $id2, $id3]);
+
+Broadcast remote control command to one or more workers.
+
 =head2 dequeue
 
   my $info = $backend->dequeue($worker_id, 0.5);
@@ -696,6 +697,18 @@ These options are currently available:
 
 =over 2
 
+=item ids
+
+  ids => ['23', '24']
+
+List only jobs with these ids.
+
+=item queues
+
+  queues => ['important', 'unimportant']
+
+List only jobs in these queues.
+
 =item state
 
   state => 'inactive'
@@ -710,17 +723,266 @@ List only jobs for this task.
 
 =back
 
+These fields are currently available:
+
+=over 2
+
+=item args
+
+  args => ['foo', 'bar']
+
+Job arguments.
+
+=item attempts
+
+  attempts => 25
+
+Number of times performing this job will be attempted.
+
+=item children
+
+  children => ['10026', '10027', '10028']
+
+Jobs depending on this job.
+
+=item created
+
+  created => 784111777
+
+Epoch time job was created.
+
+=item delayed
+
+  delayed => 784111777
+
+Epoch time job was delayed to.
+
+=item finished
+
+  finished => 784111777
+
+Epoch time job was finished.
+
+=item id
+
+  id => 10025
+
+Job id.
+
+=item notes
+
+  notes => {foo => 'bar', baz => [1, 2, 3]}
+
+Hash reference with arbitrary metadata for this job.
+
+=item parents
+
+  parents => ['10023', '10024', '10025']
+
+Jobs this job depends on.
+
+=item priority
+
+  priority => 3
+
+Job priority.
+
+=item queue
+
+  queue => 'important'
+
+Queue name.
+
+=item result
+
+  result => 'All went well!'
+
+Job result.
+
+=item retried
+
+  retried => 784111777
+
+Epoch time job has been retried.
+
+=item retries
+
+  retries => 3
+
+Number of times job has been retried.
+
+=item started
+
+  started => 784111777
+
+Epoch time job was started.
+
+=item state
+
+  state => 'inactive'
+
+Current job state, usually C<active>, C<failed>, C<finished> or C<inactive>.
+
+=item task
+
+  task => 'foo'
+
+Task name.
+
+=item worker
+
+  worker => '154'
+
+Id of worker that is processing the job.
+
+=back
+
+=head2 list_locks
+
+  my $results = $backend->list_locks($offset, $limit);
+  my $results = $backend->list_locks($offset, $limit, {names => ['foo']});
+
+Returns information about locks in batches.
+
+  # Get the total number of results (without limit)
+  my $num = $backend->list_locks(0, 100, {names => ['bar']})->{total};
+
+  # Check expiration time
+  my $results = $backend->list_locks(0, 1, {names => ['foo']});
+  my $expires = $results->{locks}[0]{expires};
+
+These options are currently available:
+
+=over 2
+
+=item names
+
+  names => ['foo', 'bar']
+
+List only locks with these names.
+
+=back
+
+These fields are currently available:
+
+=over 2
+
+=item expires
+
+  expires => 784111777
+
+Epoch time this lock will expire.
+
+=item name
+
+  name => 'foo'
+
+Lock name.
+
+=back
+
 =head2 list_workers
 
-  my $batch = $backend->list_workers($skip, $limit);
+  my $results = $backend->list_workers($offset, $limit);
+  my $results = $backend->list_workers($offset, $limit, {ids => [23]});
 
-Returns the same information as L</"worker_info"> but in batches.
+Returns information about workers in batches.
 
+  # Get the total number of results (without limit)
+  my $num = $backend->list_workers(0, 100)->{total};
+
+  # Check worker host
+  my $results = $backend->list_workers(0, 1, {ids => [$worker_id]});
+  my $host    = $results->{workers}[0]{host};
+
+These options are currently available:
+
+=over 2
+
+=item ids
+
+  ids => ['23', '24']
+
+List only workers with these ids.
+
+=back
+
+These fields are currently available:
+
+=over 2
+
+=item id
+
+  id => 22
+
+Worker id.
+
+=item host
+
+  host => 'localhost'
+
+Worker host.
+
+=item jobs
+
+  jobs => ['10023', '10024', '10025', '10029']
+
+Ids of jobs the worker is currently processing.
+
+=item notified
+
+  notified => 784111777
+
+Epoch time worker sent the last heartbeat.
+
+=item pid
+
+  pid => 12345
+
+Process id of worker.
+
+=item started
+
+  started => 784111777
+
+Epoch time worker was started.
+
+=item status
+
+  status => {queues => ['default', 'important']}
+
+Hash reference with whatever status information the worker would like to share.
+
+=back
+
+=head2 lock
+
+  my $bool = $backend->lock('foo', 3600);
+  my $bool = $backend->lock('foo', 3600, {limit => 20});
+
+Try to acquire a named lock that will expire automatically after the given
+amount of time in seconds. An expiration time of C<0> can be used to check if a
+named lock already exists without creating one.
+
+These options are currently available:
+
+=over 2
+
+=item limit
+
+  limit => 20
+
+Number of shared locks with the same name that can be active at the same time,
+defaults to C<1>.
+
+=back
 =head2 new
 
   my $backend = Minion::Backend::MongoDB->new('mongodb://127.0.0.1:27017');
 
-Construct a new L<Minion::Backend::MongoDB> object.
+Construct a new L<Minion::Backend::MongoDB> object. Required a
+L<connection string URI|MongoDB::MongoClient/"CONNECTION STRING URI">. Optional
+every other attributes will be pass to L<MongoDB::MongoClient> costructor.
 
 =head2 register_worker
 
