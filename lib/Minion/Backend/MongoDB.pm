@@ -299,7 +299,9 @@ sub register_worker {
 
   $self->jobs->indexes->create_one(Tie::IxHash->new(state => 1, delayed => 1, task => 1, queue => 1));
   $self->jobs->indexes->create_one(Tie::IxHash->new(finished => 1));
-  $self->locks->indexes->create_one(Tie::IxHash->new(name => 1, expires => 1));
+  #$self->locks->indexes->create_one(Tie::IxHash->new(name => 1, expires => 1));
+  $self->locks->indexes->create_one(Tie::IxHash->new(name => 1));
+  $self->locks->indexes->create_one(Tie::IxHash->new(expires => 1));
   my $res = $self->workers->insert_one(
     { host     => hostname,
       pid      => $$,
@@ -457,14 +459,25 @@ sub _lock {
     my $dt_now = DateTime->now;
     my $dt_exp = $dt_now->clone->add(seconds => $duration);
 
-    $s->locks->delete_many({expires => {'$lt' => $dt_now}});
+    $s->locks->update_one({}, {'$pull' => {expires => {'$lt' => $dt_now}}});
 
-    return 0
-        if ($s->locks->count_documents({name => $name}) >= $count );
+    my $locks_count = 0;
 
-    $s->locks->insert_one({
-        name => $name, expires => $dt_exp
-    }) if ($dt_exp > $dt_now);
+    my $match = {name => $name};
+    my $project = {docs_count => {'$size' => '$expires'} };
+    my $cur = $s->locks->aggregate([
+        {'$match' => $match},
+        {'$project' => $project}
+    ]);
+    if ($_ = $cur->next) {
+        $locks_count = $_->{docs_count}
+    }
+    return 0 if $locks_count >= $count;
+
+    $s->locks->update_one(
+        $match,
+        {'$push' => {expires => $dt_exp}},
+        {upsert => 1}) if ($dt_exp > $dt_now);
 
     return 1;
 }
