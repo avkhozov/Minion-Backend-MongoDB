@@ -446,6 +446,7 @@ sub _job_info {
   $job->{id}        = $job->{_id};
   $job->{retries} //= 0;
   $job->{children}  = [map $_->{_id}->hex, @{$job->{children}}];
+  $job->{time}      = DateTime->now->epoch; # server time
 
   return $job;
 }
@@ -835,6 +836,12 @@ Current job state, usually C<active>, C<failed>, C<finished> or C<inactive>.
   task => 'foo'
 
 Task name.
+
+=item time
+
+  time => 78411177
+
+Server time.
 
 =item worker
 
