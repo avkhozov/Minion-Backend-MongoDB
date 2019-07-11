@@ -1,4 +1,5 @@
 package Minion::Backend::MongoDB;
+
 use Mojo::Base 'Minion::Backend';
 
 our $VERSION = '1.00';
@@ -330,7 +331,10 @@ sub repair {
 
   # Abandoned jobs
   my $jobs = $self->jobs;
-  my $cursor = $jobs->find({state => 'active'});
+  my $cursor = $jobs->find({
+      state => 'active',
+      queue => {'$ne' => 'minion_foreground'}
+  });
   while (my $job = $cursor->next) {
     $self->fail_job(@$job{qw(_id retries)}, 'Worker went away')
         unless $workers->count_documents({_id => $job->{worker}});
@@ -396,7 +400,11 @@ sub stats {
   # I don't know if this value is correct as calculated. PG use the incremental
   # sequence id
   $stats->{enqueued_jobs} += $stats->{"${_}_jobs"} for qw(active failed finished inactive);
-  $stats->{uptime} = $self->admin->run_command(Tie::IxHash->new('serverStatus' => 1))->{uptime};
+  eval {
+      $stats->{uptime} = $self->admin->run_command(Tie::IxHash->new('serverStatus' => 1))->{uptime};
+  };
+  # User doesn't have admin authorization. Server uptime missing
+  $stats->{uptime} = -1 if ($@);
   return $stats;
 }
 

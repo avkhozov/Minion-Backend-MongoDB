@@ -64,15 +64,15 @@ like $job->info->{finished}, qr/^[\d.]+$/,       'has finished timestamp';
 is $job->info->{state},      'failed',           'job is no longer active';
 is $job->info->{result},     'Worker went away', 'right result';
 
-# Repair abandoned job
+# Repair abandoned job in minion_foreground queue (have to be handled manually)
 $worker->register;
-$id  = $minion->enqueue('test');
-$job = $worker->dequeue(0);
+$id  = $minion->enqueue('test', [], {queue => 'minion_foreground'});
+$job = $worker->dequeue(0, {queues => ['minion_foreground']});
 is $job->id, $id, 'right id';
 $worker->unregister;
 $minion->repair;
-is $job->info->{state},  'failed',           'job is no longer active';
-is $job->info->{result}, 'Worker went away', 'right result';
+is $job->info->{state},  'active',           'job is still active';
+is $job->info->{result}, undef , 'no result';
 
 # Repair old jobs
 $worker->register;
