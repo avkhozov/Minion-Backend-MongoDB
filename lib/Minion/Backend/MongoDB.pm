@@ -300,7 +300,7 @@ sub register_worker {
   $self->jobs->indexes->create_one(Tie::IxHash->new(state => 1, delayed => 1, task => 1, queue => 1));
   $self->jobs->indexes->create_one(Tie::IxHash->new(finished => 1));
   #$self->locks->indexes->create_one(Tie::IxHash->new(name => 1, expires => 1));
-  $self->locks->indexes->create_one(Tie::IxHash->new(name => 1));
+  $self->locks->indexes->create_one(Tie::IxHash->new(name => 1), {unique => 1});
   $self->locks->indexes->create_one(Tie::IxHash->new(expires => 1));
   my $res = $self->workers->insert_one(
     { host     => hostname,
@@ -459,25 +459,21 @@ sub _lock {
     my $dt_now = DateTime->now;
     my $dt_exp = $dt_now->clone->add(seconds => $duration);
 
+    # TODO: remove old locks
     $s->locks->update_one({}, {'$pull' => {expires => {'$lt' => $dt_now}}});
 
-    my $locks_count = 0;
+    my $match = {name => $name, locks_count => {'$lt' => $count}};
+    eval {
+        my $ret = $s->locks->find_one_and_update(
+            $match,
+            {'$push' => {expires => $dt_exp}, '$inc' => { locks_count => 1}},
+            { upsert => 1 }
+        ) if ($dt_exp > $dt_now);
+    };
 
-    my $match = {name => $name};
-    my $project = {docs_count => {'$size' => '$expires'} };
-    my $cur = $s->locks->aggregate([
-        {'$match' => $match},
-        {'$project' => $project}
-    ]);
-    if ($_ = $cur->next) {
-        $locks_count = $_->{docs_count}
-    }
-    return 0 if $locks_count >= $count;
-
-    $s->locks->update_one(
-        $match,
-        {'$push' => {expires => $dt_exp}},
-        {upsert => 1}) if ($dt_exp > $dt_now);
+    # try to insert new record when record exists
+    # this happen only when count < locks_count so return 0
+    ($@ =~ /E11000/ && return 0) || die $@ if ($@);
 
     return 1;
 }
