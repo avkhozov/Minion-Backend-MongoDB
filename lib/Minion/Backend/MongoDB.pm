@@ -558,7 +558,7 @@ sub _try {
   return undef unless $doc_matched;
 
   my $doc = [
-    {_id => $doc_matched->{_id}},
+    {_id => $doc_matched->{_id}, state => 'inactive'},
     {'$set' => {
         started => DateTime->from_epoch(epoch => time),
         state => 'active',
