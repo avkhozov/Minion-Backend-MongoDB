@@ -1,8 +1,8 @@
 package Minion::Backend::MongoDB;
 
-use Mojo::Base 'Minion::Backend';
+# ABSTRACT: MongoDB backend for Minion
 
-our $VERSION = '1.00';
+use Mojo::Base 'Minion::Backend';
 
 use boolean;
 use BSON::ObjectId;
@@ -621,10 +621,6 @@ sub _worker_info {
 
 =encoding utf8
 
-=head1 NAME
-
-Minion::Backend::MongoDB - MongoDB backend for Minion
-
 =head1 SYNOPSIS
 
   use Minion::Backend::MongoDB;
@@ -1033,6 +1029,7 @@ Number of shared locks with the same name that can be active at the same time,
 defaults to C<1>.
 
 =back
+
 =head2 new
 
   my $backend = Minion::Backend::MongoDB->new('mongodb://127.0.0.1:27017');
