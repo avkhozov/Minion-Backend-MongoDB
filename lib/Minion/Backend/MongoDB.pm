@@ -194,12 +194,13 @@ sub list_locks {
   my ($self, $offset, $limit, $options) = @_;
 
   my %aggregate;
+
   my $imatch    = {};
   $imatch->{expires} = {'$gt' => bson_time()};
-  foreach (qw(name)) {
-      $imatch->{$_} = {'$in' => $options->{$_ .'s'} } if $options->{$_.'s'};
-  }
+  $imatch->{name} = {'$in' => $options->{'names'} } if $options->{'names'};
+
   $aggregate{match}     = { '$match'    => $imatch };
+  $aggregate{unwind}    = { '$unwind'   => '$expires' };
   $aggregate{skip}      = { '$skip'     => $offset // 0 },
   $aggregate{limit}     = { '$limit'    => $limit } if ($limit);
 
@@ -208,17 +209,18 @@ sub list_locks {
         $iproject->{$_} = {'$toLong' => {'$multiply' => [{
             '$convert' => { 'input' => '$'. $_, to => 'long'}}, 0.001]}};
   }
-  foreach (qw(name)) {
-        $iproject->{$_} = 1;
-  }
+  $iproject->{_id} = 0;
+  $iproject->{name} = 1;
+
   $aggregate{project}   = { '$project' => $iproject};
-  $aggregate{sort}      = { '$sort'     => { _id => -1 } };
+  $aggregate{sort}      = { '$sort'     => { expires => -1 } };
+
 
   my @aggregate = grep defined, map {$aggregate{$_}}
-   qw(match skip limit sort project);
+   qw(match unwind sort skip limit project);
 
   my $cursor    = $self->locks->aggregate(\@aggregate);
-  my $total     = $self->locks->count_documents($imatch);
+  my $total     = $self->_locks_count($imatch);
 
   my $locks = [$cursor->all];
 
@@ -299,7 +301,6 @@ sub register_worker {
 
   $self->jobs->indexes->create_one(Tie::IxHash->new(state => 1, delayed => 1, task => 1, queue => 1));
   $self->jobs->indexes->create_one(Tie::IxHash->new(finished => 1));
-  #$self->locks->indexes->create_one(Tie::IxHash->new(name => 1, expires => 1));
   $self->locks->indexes->create_one(Tie::IxHash->new(name => 1), {unique => 1});
   $self->locks->indexes->create_one(Tie::IxHash->new(expires => 1));
   my $res = $self->workers->insert_one(
@@ -413,10 +414,14 @@ sub stats {
 sub unlock {
     my ($s, $name) = @_;
 
-    my $doc = $s->locks->find_one_and_delete({
-        name => $name,
-        expires => {'$gt' => bson_time()}
-    }, { sort => {expires => 1} } );
+    # remove the first (more proximum to expiration) lock
+    my $doc = $s->locks->find_one_and_update(
+        {name => $name},
+        {'$pop' => {expires => -1}}
+    );
+
+    # delete lock record if expires is empty
+    $s->locks->delete_one({name => $name, expires => {'$size' => 0}}) if ($doc);
 
     return defined $doc ;
 }
@@ -459,23 +464,52 @@ sub _lock {
     my $dt_now = DateTime->now;
     my $dt_exp = $dt_now->clone->add(seconds => $duration);
 
-    # TODO: remove old locks
-    $s->locks->update_one({}, {'$pull' => {expires => {'$lt' => $dt_now}}});
 
-    my $match = {name => $name, locks_count => {'$lt' => $count}};
-    eval {
-        my $ret = $s->locks->find_one_and_update(
-            $match,
-            {'$push' => {expires => $dt_exp}, '$inc' => { locks_count => 1}},
-            { upsert => 1 }
-        ) if ($dt_exp > $dt_now);
-    };
+    my $match = {name => $name};
 
-    # try to insert new record when record exists
-    # this happen only when count < locks_count so return 0
-    ($@ =~ /E11000/ && return 0) || die $@ if ($@);
+    # expires count (I know, this is not atomic, I didn't find any alternative)
+    return 0 if $s->_locks_count($match) >= $count;
+
+    # ok, can add lock sorting by first to last expiration
+    my $ret = $s->locks->find_one_and_update(
+        $match,
+        {
+            '$push' => {
+                expires => {
+                    '$each' => [$dt_exp],
+                    '$sort' => 1
+                }
+            }
+        },
+        { upsert => 1 }
+    );
+
+    # remove expired locks
+    my $del = $s->locks->update_many({}, {'$pull' => {expires => {'$lte' => $dt_now}}});
+    # delete lock record if expires is empty
+    $s->locks->delete_one({name => $name, expires => {'$size' => 0}})
+        if ($del->{modified_count});
 
     return 1;
+}
+
+sub _locks_count {
+    my $s = shift;
+    my $match = shift;
+
+    my @aggregate = (
+        { '$group' => {
+            _id         => undef,
+            locks_count => { '$sum' =>  { '$size' => '$expires' } }
+        } },
+        { '$project' => { _id => 0 } }
+    );
+
+    unshift @aggregate, {'$match' => $match} if $match;
+
+    my $rec = $s->locks->aggregate(\@aggregate)->next;
+
+    return $rec ? $rec->{locks_count} : 0;
 }
 
 sub _notifications {
@@ -1098,7 +1132,7 @@ Emiliano Bruni E<lt>info@ebruni.itE<gt>
 
 Copyright (C) 2015-2017, Andrey Khozov,
 
-Copyright (C) 2018 Andrey Khozov, Emiliano Bruni.
+Copyright (C) 2018-2019, Emiliano Bruni.
 
 This library is free software; you can redistribute it and/or modify it under the same terms as Perl itself.
 

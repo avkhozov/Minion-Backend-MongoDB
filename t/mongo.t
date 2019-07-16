@@ -154,7 +154,7 @@ ok !$minion->lock('yada', 3600, {limit => 1}), 'not locked again';
 
 # Shared lock
 ok $minion->lock('bar', 3600,  {limit => 3}), 'locked';
-ok $minion->lock('bar', 3600,  {limit => 3}), 'locked again';
+ok $minion->lock('bar', 2600,  {limit => 3}), 'locked again';
 ok $minion->lock('bar', -3600, {limit => 3}), 'locked again';
 ok $minion->lock('bar', 3600,  {limit => 3}), 'locked again';
 ok !$minion->lock('bar', 3600, {limit => 2}), 'not locked again';
@@ -176,9 +176,9 @@ like $results->{locks}[0]{expires}, qr/^[\d.]+$/, 'expires';
 is $results->{locks}[1], undef, 'no more locks';
 is $results->{total}, 1, 'one result';
 $minion->unlock('yada');
-$minion->lock('yada', 3600, {limit => 2});
-$minion->lock('test', 3600, {limit => 1});
-$minion->lock('yada', 3600, {limit => 2});
+$minion->lock('yada', 3601, {limit => 2});
+$minion->lock('test', 3602, {limit => 1});
+$minion->lock('yada', 3603, {limit => 2});
 is $minion->stats->{active_locks}, 3, 'three active locks';
 $results = $minion->backend->list_locks(1, 1);
 is $results->{locks}[0]{name},      'test',       'right name';
@@ -195,7 +195,7 @@ is $results->{total}, 2, 'two results';
 $minion->backend->locks->update_many(
     {name => 'yada'},
     {'$set' => {
-        expires => DateTime->now->add(seconds => -1)
+        'expires.$[]' => DateTime->now->add(seconds => -1)
     }}
 );
 is $minion->backend->list_locks(0, 10, {names => ['yada']})->{total}, 0,
