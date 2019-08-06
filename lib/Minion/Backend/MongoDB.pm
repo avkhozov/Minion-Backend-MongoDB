@@ -629,7 +629,9 @@ sub _worker_info {
 
 =head1 DESCRIPTION
 
-L<Minion::Backend::MongoDB> is a L<MongoDB> backend for L<Minion>.
+L<Minion::Backend::MongoDB> is a L<MongoDB> backend for L<Minion>
+derived from L<Minion::Backend::Pg> and supports its methods and tests
+up to 9.11.
 
 =head1 ATTRIBUTES
 
@@ -1118,20 +1120,6 @@ User must have this roles
                         "db" : "minion"
                 }
         ]
-
-=head1 AUTHORS
-
-Andrey Khozov E<lt>avkhozov@gmail.comE<gt>,
-
-Emiliano Bruni E<lt>info@ebruni.itE<gt>
-
-=head1 LICENSE
-
-Copyright (C) 2015-2017, Andrey Khozov,
-
-Copyright (C) 2018-2019, Emiliano Bruni.
-
-This library is free software; you can redistribute it and/or modify it under the same terms as Perl itself.
 
 =head1 SEE ALSO
 

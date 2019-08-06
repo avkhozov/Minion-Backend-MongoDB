@@ -16,7 +16,9 @@ version 1.00
 
 # DESCRIPTION
 
-[Minion::Backend::MongoDB](https://metacpan.org/pod/Minion::Backend::MongoDB) is a [MongoDB](https://metacpan.org/pod/MongoDB) backend for [Minion](https://metacpan.org/pod/Minion).
+[Minion::Backend::MongoDB](https://metacpan.org/pod/Minion::Backend::MongoDB) is a [MongoDB](https://metacpan.org/pod/MongoDB) backend for [Minion](https://metacpan.org/pod/Minion)
+derived from [Minion::Backend::Pg](https://metacpan.org/pod/Minion::Backend::Pg) and supports its methods and tests
+up to 9.11.
 
 # ATTRIBUTES
 
@@ -470,20 +472,6 @@ User must have this roles
                   }
           ]
 
-# AUTHORS
-
-Andrey Khozov <avkhozov@gmail.com>,
-
-Emiliano Bruni <info@ebruni.it>
-
-# LICENSE
-
-Copyright (C) 2015-2017, Andrey Khozov,
-
-Copyright (C) 2018-2019, Emiliano Bruni.
-
-This library is free software; you can redistribute it and/or modify it under the same terms as Perl itself.
-
 # SEE ALSO
 
 [Minion](https://metacpan.org/pod/Minion), [MongoDB](https://metacpan.org/pod/MongoDB), [http://mojolicio.us](http://mojolicio.us).
@@ -494,7 +482,7 @@ Emiliano Bruni <info@ebruni.it>, Andrey Khozov <avkhozov@gmail.com>
 
 # COPYRIGHT AND LICENSE
 
-This software is Copyright (c) 2019 by Emiliano Bruni.
+This software is Copyright (c) 2019 by Emiliano Bruni, Andrey Khozov.
 
 This is free software, licensed under:
 
