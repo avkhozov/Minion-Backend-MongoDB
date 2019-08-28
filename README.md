@@ -6,7 +6,7 @@ Minion::Backend::MongoDB - MongoDB backend for Minion
 
 # VERSION
 
-version 1.00
+version 1.01
 
 # SYNOPSIS
 
