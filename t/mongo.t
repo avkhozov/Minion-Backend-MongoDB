@@ -586,7 +586,6 @@ is $job->info->{notes}{finish_count}, 1, 'finish event has been emitted once';
 ok $job->info->{notes}{finish_pid},    'has a process id';
 isnt $job->info->{notes}{finish_pid},  $$, 'different process id';
 is $job->info->{notes}{before}, 23, 'value still exists';
-is $job->info->{notes}{before},        23, 'value still exists';
 is $job->info->{notes}{cleanup_count}, 2, 'cleanup event has been emitted once';
 ok $job->info->{notes}{cleanup_pid},   'has a process id';
 isnt $job->info->{notes}{cleanup_pid}, $$, 'different process id';
