@@ -540,6 +540,7 @@ $minion->once(
             $job->note(finish_count => $old + 1, finish_pid => $$);
           }
         );
+        # introduced in Minion v9.13
         $job->on(
             cleanup => sub {
                 my $job = shift;
@@ -586,9 +587,13 @@ is $job->info->{notes}{finish_count}, 1, 'finish event has been emitted once';
 ok $job->info->{notes}{finish_pid},    'has a process id';
 isnt $job->info->{notes}{finish_pid},  $$, 'different process id';
 is $job->info->{notes}{before}, 23, 'value still exists';
-is $job->info->{notes}{cleanup_count}, 2, 'cleanup event has been emitted once';
-ok $job->info->{notes}{cleanup_pid},   'has a process id';
-isnt $job->info->{notes}{cleanup_pid}, $$, 'different process id';
+SKIP: {
+    skip "Cleanup event introduced in Minion v9.13", 3
+        if ($Minion::VERSION < 9.13);
+    is $job->info->{notes}{cleanup_count}, 2, 'cleanup event has been emitted once';
+    ok $job->info->{notes}{cleanup_pid},   'has a process id';
+    isnt $job->info->{notes}{cleanup_pid}, $$, 'different process id';
+}
 $worker->unregister;
 
 # Queues
@@ -817,13 +822,17 @@ $job = $worker->dequeue(0);
 ok $job->start->pid, 'has a process id';
 ok !$job->is_finished, 'job is not finished';
 usleep 5000 until $job->info->{notes}{started};
-$job->kill('USR1');
-$job->kill('USR2');
-is $job->info->{state}, 'active', 'right state';
-$job->kill('INT');
-usleep 5000 until $job->is_finished;
-is $job->info->{state}, 'failed', 'right state';
-like $job->info->{result}, qr/Non-zero exit status/, 'right result';
+SKIP: {
+    skip "Kill method introduced in Minion v9.06", 4
+        if ($Minion::VERSION < 9.06);
+    $job->kill('USR1');
+    $job->kill('USR2');
+    is $job->info->{state}, 'active', 'right state';
+    $job->kill('INT');
+    usleep 5000 until $job->is_finished;
+    is $job->info->{state}, 'failed', 'right state';
+    like $job->info->{result}, qr/Non-zero exit status/, 'right result';
+}
 $worker->unregister;
 
 # Job dependencies
