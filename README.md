@@ -6,7 +6,7 @@ Minion::Backend::MongoDB - MongoDB backend for Minion
 
 # VERSION
 
-version 1.01
+version 1.02
 
 # SYNOPSIS
 
@@ -132,6 +132,13 @@ These options are currently available:
         ids => ['23', '24']
 
     List only jobs with these ids.
+
+- notes
+
+        notes => ['foo', 'bar']
+
+    List only jobs with one of these notes. Note that this option is EXPERIMENTAL
+    and might change without warning!
 
 - queues
 
@@ -394,6 +401,19 @@ These options are currently available:
 Construct a new [Minion::Backend::MongoDB](https://metacpan.org/pod/Minion::Backend::MongoDB) object. Required a
 [connection string URI](https://metacpan.org/pod/MongoDB::MongoClient#CONNECTION-STRING-URI). Optional
 every other attributes will be pass to [MongoDB::MongoClient](https://metacpan.org/pod/MongoDB::MongoClient) costructor.
+
+## note
+
+    my $bool = $backend->note($job_id, {mojo => 'rocks', minion => 'too'});
+
+Change one or more metadata fields for a job. Setting a value to `undef` will
+remove the field.
+
+## receive
+
+    my $commands = $backend->receive($worker_id);
+
+Receive remote control commands for worker.
 
 ## register\_worker
 
