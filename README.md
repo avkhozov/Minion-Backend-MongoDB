@@ -6,7 +6,7 @@ Minion::Backend::MongoDB - MongoDB backend for Minion
 
 # VERSION
 
-version 1.02
+version 1.03
 
 # SYNOPSIS
 
@@ -18,7 +18,7 @@ version 1.02
 
 [Minion::Backend::MongoDB](https://metacpan.org/pod/Minion::Backend::MongoDB) is a [MongoDB](https://metacpan.org/pod/MongoDB) backend for [Minion](https://metacpan.org/pod/Minion)
 derived from [Minion::Backend::Pg](https://metacpan.org/pod/Minion::Backend::Pg) and supports its methods and tests
-up to 9.11.
+up to 9.13 (2019-08-29).
 
 # ATTRIBUTES
 
@@ -472,6 +472,13 @@ Unregister worker.
     my $info = $backend->worker_info($worker_id);
 
 Get information about a worker or return `undef` if worker does not exist.
+
+## \_oid
+
+    my $mongo_oid = $backend->_oid($hex_24length);
+
+EXPERIMENTAL: Convert an 24-byte hexadecimal value into a `BSON::OID` object.
+Usually, it should be used only if you need to query the MongoDB directly
 
 # NOTES ABOUT USER
 

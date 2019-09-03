@@ -5,7 +5,7 @@ package Minion::Backend::MongoDB;
 use Mojo::Base 'Minion::Backend';
 
 use boolean;
-use BSON::ObjectId;
+use BSON::OID;
 use BSON::Types ':all';
 use DateTime;
 use DateTime::Set;
@@ -30,7 +30,10 @@ sub broadcast {
   my ($s, $command, $args, $ids) = (shift, shift, shift || [], shift || []);
 
   my $match = {};
-  $match->{_id} = {'$in' => $ids} if (scalar(@$ids));
+
+  my @ids = map $s->_oid($_), @$ids;
+
+  $match->{_id} = {'$in' => \@ids} if (scalar(@ids));
 
   my $res = $s->workers->update_many(
     $match, {'$push' => {inbox => [$command, @$args]}}
@@ -40,9 +43,9 @@ sub broadcast {
 }
 
 sub dequeue {
-  my ($self, $oid, $wait, $options) = @_;
+  my ($self, $id, $wait, $options) = @_;
 
-  if ((my $job = $self->_try($oid, $options))) { return $job }
+  if ((my $job = $self->_try($id, $options))) { return $job }
   return undef if Mojo::IOLoop->is_running;
 
   # Capped collection for notifications
@@ -56,7 +59,7 @@ sub dequeue {
   Mojo::IOLoop->remove($recur);
   Mojo::IOLoop->remove($timer);
 
-  return $self->_try($oid, $options);
+  return $self->_try($id, $options);
 
 }
 
@@ -67,6 +70,9 @@ sub enqueue {
 
   # Capped collection for notifications
   $self->_notifications;
+
+  @{$options->{parents}} = map $self->_oid($_), @{$options->{parents}}
+    if (exists $options->{parents});
 
   my $doc = {
     args    => $args,
@@ -83,9 +89,9 @@ sub enqueue {
   };
 
   my $res = $self->jobs->insert_one($doc);
-  my $oid = $res->inserted_id;
+  my $id = $res->inserted_id->hex;
   $self->notifications->insert_one({c => 'created'});
-  return $oid;
+  return $id;
 }
 
 sub fail_job { shift->_update(1, @_) }
@@ -151,7 +157,7 @@ sub list_jobs {
   my ($self, $lskip, $llimit, $options) = @_;
 
   my $imatch    = {};
-  $options->{'_ids'} = [map(BSON::ObjectId->new($_), @{$options->{ids}})]
+  $options->{'_ids'} = [map($self->_oid($_), @{$options->{ids}})]
     if $options->{ids};
   foreach (qw(_id state task queue)) {
       $imatch->{$_} = {'$in' => $options->{$_ . 's'}} if $options->{$_ . 's'};
@@ -236,7 +242,14 @@ sub list_locks {
 sub list_workers {
   my ($self, $offset, $limit, $options) = @_;
 
-  my $cursor = $self->workers->find({pid => {'$exists' => true}});
+  my $match    = {};
+  $options->{'_ids'} = [map($self->_oid($_), @{$options->{ids}})]
+    if $options->{ids};
+  foreach (qw(_id)) {
+      $match->{$_} = {'$in' => $options->{$_ . 's'}} if $options->{$_ . 's'};
+  }
+
+  my $cursor = $self->workers->find($match);
   my $total = scalar($cursor->all);
   $cursor->reset;
   $cursor->sort({_id => -1})->skip($offset)->limit($limit);
@@ -271,7 +284,7 @@ sub note {
   while (my ($k, $v) = each %$merge) {
       (defined $v ? $set : $unset)->{"notes.$k"} = $v;
   };
-  my @update = ( {_id => $id} );
+  my @update = ( {_id => $self->_oid($id)} );
   push @update, {'$set' => $set} if (keys %$set);
   push @update, {'$unset' => $unset} if (keys %$unset);
   push @update, {
@@ -284,7 +297,7 @@ sub note {
 sub receive {
   my ($self, $id) = @_;
   my $oldrec = $self->workers->find_one_and_update(
-    {_id => $id, inbox => { '$exists' => 1, '$ne' => [] } },
+    {_id => $self->_oid($id), inbox => { '$exists' => 1, '$ne' => [] } },
     {'$set' => {inbox => [] }},
     {
         upsert    => 0,
@@ -301,7 +314,7 @@ sub register_worker {
   return $id
     if $id
     && $self->workers->find_one_and_update(
-    {_id => $id}, {'$set' => {
+    {_id => $self->_oid($id)}, {'$set' => {
         notified => DateTime->from_epoch(epoch => time),
         status => $options->{status} // {}
     }});
@@ -319,13 +332,12 @@ sub register_worker {
       inbox => [],
     }
   );
-
-  return $res->inserted_id;
+  return $res->inserted_id->hex;
 }
 
 sub remove_job {
-  my ($self, $oid) = @_;
-  my $doc = {_id => $oid, state => {'$in' => [qw(failed finished inactive)]}};
+  my ($self, $id) = @_;
+  my $doc = {_id => $self->_oid($id), state => {'$in' => [qw(failed finished inactive)]}};
   return !!$self->jobs->delete_one($doc)->deleted_count;
 }
 
@@ -368,12 +380,12 @@ sub repair {
 sub reset { $_->drop for $_[0]->workers, $_[0]->jobs, $_[0]->locks }
 
 sub retry_job {
-  my ($self, $oid, $retries, $options) = (shift, shift, shift, shift || {});
+  my ($self, $id, $retries, $options) = (shift, shift, shift, shift || {});
   $options->{delay} //= 0;
 
   my $dt_now = DateTime->now();
 
-  my $query = {_id => $oid, retries => $retries};
+  my $query = {_id => $self->_oid($id), retries => $retries};
   my $update = {
     '$inc' => {retries => 1},
     '$set' => {
@@ -432,7 +444,7 @@ sub unlock {
 
     return defined $doc ;
 }
-sub unregister_worker { shift->workers->delete_one({_id => shift}) }
+sub unregister_worker { $_[0]->workers->delete_one({_id => $_[0]->_oid($_[1])}) }
 
 sub worker_info { $_[0]->_worker_info($_[0]->workers->find_one({_id => $_[1]})) }
 
@@ -457,7 +469,7 @@ sub _job_info {
 
   return undef unless my $job = shift;
 
-  $job->{id}        = $job->{_id};
+  $job->{id}        = $job->{_id}->hex;
   $job->{retries} //= 0;
   $job->{children}  = [map $_->{_id}->hex, @{$job->{children}}];
   $job->{time}      = DateTime->now->epoch; # server time
@@ -531,13 +543,17 @@ sub _notifications {
   $notifications->insert_one({});
 }
 
+sub _oid {
+	return defined $_[1] ? BSON::OID->new(oid => pack("H*", $_[1])) : undef;
+}
+
 sub _total {
     my ($name, $res, $tot) = @_;
     return { total => $tot, $name => $res};
 }
 
 sub _try {
-  my ($self, $oid, $options) = @_;
+  my ($self, $id, $options) = @_;
 
   my $match = Tie::IxHash->new(
     delayed   => {'$lt' => DateTime->from_epoch(epoch => time)},
@@ -545,7 +561,7 @@ sub _try {
     task      => {'$in' => [keys %{$self->minion->tasks}]},
     queue     => {'$in' => $options->{queues} // ['default']}
   );
-  $match->Push('_id' => $options->{id}) if defined $options->{id};
+  $match->Push('_id' => $self->_oid($options->{id})) if defined $options->{id};
 
   my $docs = $self->jobs->find($match)->sort({priority => -1, id => 1});
 
@@ -569,7 +585,7 @@ sub _try {
     {'$set' => {
         started => DateTime->from_epoch(epoch => time),
         state => 'active',
-        worker => $oid
+        worker => $self->_oid($id)
     }},
     {
         projection      => {args => 1, retries => 1, task => 1},
@@ -580,19 +596,19 @@ sub _try {
 
   my $job = $self->jobs->find_one_and_update(@$doc);
   return undef unless ($job->{_id});
-  $job->{id} = $job->{_id};
+  $job->{id} = $job->{_id}->hex;
   return $job;
 }
 
 sub _update {
-  my ($self, $fail, $oid, $retries, $result) = @_;
+  my ($self, $fail, $id, $retries, $result) = @_;
 
   my $update = {
       finished => DateTime->now,
       state => $fail ? 'failed' : 'finished',
       result => $fail ?  $result . '' : $result ,
   };
-  my $query = {_id => $oid, state => 'active', retries => $retries};
+  my $query = {_id => $self->_oid($id), state => 'active', retries => $retries};
   my $doc = $self->jobs->find_one_and_update($query, {'$set' => $update},
     {returnDocument => 'after'});
 
@@ -601,7 +617,7 @@ sub _update {
   return 1 if !$fail || (my $attempts = $doc->{attempts}) == 1;
   return 1 if $retries >= ($attempts - 1);
   my $delay = $self->minion->backoff->($retries);
-  return $self->retry_job($oid, $retries, {delay => $delay});
+  return $self->retry_job($id, $retries, {delay => $delay});
 }
 
 sub _worker_info {
@@ -614,8 +630,8 @@ sub _worker_info {
 
   return {
     host     => $worker->{host},
-    id       => $worker->{_id},
-    jobs     => [map { $_->{_id} } $cursor->all],
+    id       => $worker->{_id}->hex,
+    jobs     => [map { $_->{_id}->hex } $cursor->all],
     pid      => $worker->{pid},
     started  => $worker->{started}->epoch,
     notified => $worker->{notified}->epoch,
@@ -638,7 +654,7 @@ sub _worker_info {
 
 L<Minion::Backend::MongoDB> is a L<MongoDB> backend for L<Minion>
 derived from L<Minion::Backend::Pg> and supports its methods and tests
-up to 9.11.
+up to 9.13 (2019-08-29).
 
 =head1 ATTRIBUTES
 
@@ -1128,6 +1144,13 @@ Unregister worker.
   my $info = $backend->worker_info($worker_id);
 
 Get information about a worker or return C<undef> if worker does not exist.
+
+=head2 _oid
+
+  my $mongo_oid = $backend->_oid($hex_24length);
+
+EXPERIMENTAL: Convert an 24-byte hexadecimal value into a C<BSON::OID> object.
+Usually, it should be used only if you need to query the MongoDB directly
 
 =head1 NOTES ABOUT USER
 
