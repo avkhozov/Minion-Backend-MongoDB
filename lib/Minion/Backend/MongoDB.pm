@@ -275,16 +275,17 @@ sub new {
 
 sub note {
   my ($self, $id, $merge) = @_;
-
-  return 1 unless defined $merge;
+  return 0 if (!keys %$merge);
   my $set = {};
   my $unset = {};
   while (my ($k, $v) = each %$merge) {
       (defined $v ? $set : $unset)->{"notes.$k"} = $v;
   };
   my @update = ( {_id => $self->_oid($id)} );
-  push @update, {'$set' => $set} if (keys %$set);
-  push @update, {'$unset' => $unset} if (keys %$unset);
+  my %set_unset;
+  $set_unset{'$set'}    = $set if (keys %$set);
+  $set_unset{'$unset'}  = $unset if (keys %$unset);
+  push @update, \%set_unset;
   push @update, {
       upsert    => 0,
       returnDocument => 'after',

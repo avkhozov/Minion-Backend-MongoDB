@@ -667,8 +667,10 @@ my $notes = {
 };
 is_deeply $job->info->{notes}, $notes, 'right metadata';
 is_deeply $job->info->{result}, [{23 => 'testtesttest'}], 'right structure';
+ok !$job->note(), 'do nothing';
+ok $job->note(foo => 5, baz => undef), 'changes and removed metadata';
 ok $job->note(yada => undef, bar => undef), 'removed metadata';
-$notes = {foo => [4, 5, 6], baz => 'yada'};
+$notes = {foo => 5};
 is_deeply $job->info->{notes}, $notes, 'right metadata';
 $worker->unregister;
 
