@@ -52,11 +52,9 @@ sub dequeue {
   $self->_notifications;
 
   my $timer = Mojo::IOLoop->timer($wait => sub { Mojo::IOLoop->stop });
-  my $recur = Mojo::IOLoop->recurring(1 => sub {
+  Mojo::IOLoop->delay(sub {
       Mojo::IOLoop->stop if ($self->_await)
-  });
-  Mojo::IOLoop->start;
-  Mojo::IOLoop->remove($recur);
+  })->wait;
   Mojo::IOLoop->remove($timer);
 
   return $self->_try($id, $options);
@@ -264,7 +262,7 @@ sub lock {
 
 sub new {
   my ($class, $url) = (shift, shift);
-  my $client = MongoDB::MongoClient->new(host => $url, @_);
+  my $client = MongoDB->connect($url, @_);
   my $db = $client->db($client->db_name);
 
   my $self = $class->SUPER::new(dbclient => $client, mongodb => $db);
@@ -319,8 +317,10 @@ sub register_worker {
         status => $options->{status} // {}
     }});
 
+  # indexes for jobs
   $self->jobs->indexes->create_one(Tie::IxHash->new(state => 1, delayed => 1, task => 1, queue => 1));
   $self->jobs->indexes->create_one(Tie::IxHash->new(finished => 1));
+  # indexes for locks
   $self->locks->indexes->create_one(Tie::IxHash->new(name => 1), {unique => 1});
   $self->locks->indexes->create_one(Tie::IxHash->new(expires => 1));
   my $res = $self->workers->insert_one(
@@ -458,9 +458,9 @@ sub _await {
         { c => 'created'},
         { c => 'update_retries'}
     ]
-  })->tailable(1);
-  return undef unless my $doc = $cursor->next || $cursor->next;
-  $self->{last} = $doc->{_id};
+  })->tailable_await(1);
+  return undef unless my @doc = $cursor->all;
+  $self->{last} = $doc[-1]->{_id};
   return 1;
 }
 

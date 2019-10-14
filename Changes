@@ -11,6 +11,7 @@ Revision history for Perl extension Minion-Backend-MongoDB
       BSON::OID object. If you need the id as an object, backend exports an
       experimental _oid method which converts a 24-length hexadecimal strings
       into a BSON::OID.
+    - Removed a memory leak while reading notifications table
 
 1.02 2019-09-02T08:03:19Z (ebruni)
 
