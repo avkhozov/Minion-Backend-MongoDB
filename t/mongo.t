@@ -965,4 +965,63 @@ is_deeply \@commands,
 $_->unregister for $worker, $worker2;
 ok !$minion->broadcast('test_id', []), 'command not sent';
 
+# test purge
+
+# test purge no params
+$id = $minion->enqueue(add => [2,3] => {notes => {test => 'purge'}});
+$minion->backend->jobs->update_one(
+    { 'notes.test' => 'purge' },
+    { '$set' => {
+        created => DateTime->now->add(seconds => - $minion->missing_after - 1)
+    } }
+);
+is $minion->backend->list_jobs(0, 1,
+    {ids => [$id], state=>'inactive'})->{total},
+        1, 'have old inactive job';
+$minion->backend->purge();
+is $minion->backend->list_jobs(0, 1,
+    {ids => [$id], state=>'inactive'})->{total},
+        0, 'old inactive job has been removed';
+
+# test purge for queues
+$minion->enqueue(add => [2,3] => {notes => {test => 'purge'}, queue => 'q1'});
+$minion->enqueue(add => [2,3] => {notes => {test => 'purge'}, queue => 'q1'});
+$minion->enqueue(add => [2,3] => {notes => {test => 'purge'}, queue => 'q2'});
+$minion->enqueue(add => [2,3] => {notes => {test => 'purge'}, queue => 'q3'});
+
+$minion->backend->jobs->update_many(
+    { 'notes.test' => 'purge' },
+    { '$set' => {
+        created => DateTime->now->add(seconds => - $minion->missing_after - 1)
+    } }
+);
+$minion->backend->purge({queues => ['q1']});
+is $minion->backend->list_jobs(0, 10, {queues=>['q1']})->{total},
+        0, 'old inactive jobs in queue have been removed';
+
+$minion->backend->purge({queues => [qw/q2 q3/]});
+is $minion->backend->list_jobs(0, 10, {queues=>[qw/q2 q3/]})->{total},
+        0, 'old inactive jobs in queues have been removed';
+# test purge for state
+$minion->enqueue(fail => [] => {notes => {test => 'purge'}, queue => 'q1'});
+$minion->enqueue(fail => [] => {notes => {test => 'purge'}, queue => 'q1'});
+$minion->perform_jobs({queues => ['q1']});
+$minion->enqueue(fail => [] => {notes => {test => 'purge'}, queue => 'q1'});
+$minion->enqueue(fail => [] => {notes => {test => 'purge'}, queue => 'q1'});
+$minion->enqueue(add => [2,3] => {notes => {test => 'purge'}, queue => 'q1'});
+$minion->backend->jobs->update_many(
+    { 'notes.test' => 'purge' },
+    { '$set' => {
+        created => DateTime->now->add(seconds => - $minion->missing_after - 1)
+    } }
+);
+
+$minion->backend->purge({states => [qw/failed/]});
+is $minion->backend->list_jobs(0, 10, {queues=>['q1']})->{total},
+        3, 'old failed jobs have been removed';
+$minion->perform_jobs({queues => ['q1']});
+$minion->backend->purge({states => [qw/failed finished/]});
+is $minion->backend->list_jobs(0, 10, {queues=>['q1']})->{total},
+        0, 'old failed and finished jobs have been removed';
+
 done_testing();

@@ -6,7 +6,7 @@ Minion::Backend::MongoDB - MongoDB backend for Minion
 
 # VERSION
 
-version 1.04
+version 1.05
 
 # SYNOPSIS
 
@@ -409,6 +409,47 @@ every other attributes will be pass to [MongoDB::MongoClient](https://metacpan.o
 Change one or more metadata fields for a job. Setting a value to `undef` will
 remove the field.
 
+## purge
+
+    $backend->purge();
+    $backend->purge({states => ['inactive'], older => 3600});
+
+Purge all jobs created older than...
+
+These options are currently available:
+
+- older
+
+        older => 3600
+
+    Value in seconds to purge jobs older than this value.
+
+    Default: $minion->missing\_after
+
+- queues
+
+        queues => ['important', 'unimportant']
+
+    Purge only jobs in these queues.
+
+- states
+
+        states => ['inactive', 'failed']
+
+    Purge only jobs in these states.
+
+- tasks
+
+        tasks => ['task1', 'task2']
+
+    Purge only jobs for these tasks.
+
+- queues
+
+        queues => ['q1', 'q2']
+
+    Purge only jobs for these queues.
+
 ## receive
 
     my $commands = $backend->receive($worker_id);
@@ -441,7 +482,6 @@ Repair worker registry and job queue if necessary.
 Reset job queue.
 
 These options are currently available:
-&#x3d;over 2
 
 - all
 
@@ -529,11 +569,3 @@ This software is Copyright (c) 2019 by Emiliano Bruni, Andrey Khozov.
 This is free software, licensed under:
 
     The GNU General Public License, Version 3, June 2007
-
-# POD ERRORS
-
-Hey! **The above document had some coding errors, which are explained below:**
-
-- Around line 480:
-
-    '=item' outside of any '=over'
