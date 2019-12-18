@@ -6,7 +6,7 @@ Minion::Backend::MongoDB - MongoDB backend for Minion
 
 # VERSION
 
-version 1.03
+version 1.04
 
 # SYNOPSIS
 
@@ -436,9 +436,24 @@ Repair worker registry and job queue if necessary.
 
 ## reset
 
-    $backend->reset;
+    $backend->reset({all => 1});
 
 Reset job queue.
+
+These options are currently available:
+&#x3d;over 2
+
+- all
+
+        all => 1
+
+    Reset everything.
+
+- locks
+
+        locks => 1
+
+    Reset only locks.
 
 ## retry\_job
 
@@ -514,3 +529,11 @@ This software is Copyright (c) 2019 by Emiliano Bruni, Andrey Khozov.
 This is free software, licensed under:
 
     The GNU General Public License, Version 3, June 2007
+
+# POD ERRORS
+
+Hey! **The above document had some coding errors, which are explained below:**
+
+- Around line 480:
+
+    '=item' outside of any '=over'

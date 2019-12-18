@@ -378,7 +378,16 @@ sub repair {
   }
 }
 
-sub reset { $_->drop for $_[0]->workers, $_[0]->jobs, $_[0]->locks }
+sub reset {
+    my ($s, $options) = (shift, shift // {});
+    if ($options->{all}) {
+        $_->drop for $s->workers, $s->jobs, $s->locks 
+    } elsif ($options->{locks}) {
+        $_->drop for $s->{locks};
+    } else {
+        warn "Starting to v10.0 you must explicit what you want to reset";
+    }
+}
 
 sub retry_job {
   my ($self, $id, $retries, $options) = (shift, shift, shift, shift || {});
@@ -1105,9 +1114,26 @@ Repair worker registry and job queue if necessary.
 
 =head2 reset
 
-  $backend->reset;
+  $backend->reset({all => 1});
 
 Reset job queue.
+
+These options are currently available:
+=over 2
+
+=item all
+
+  all => 1
+
+Reset everything.
+
+=item locks
+
+  locks => 1
+
+Reset only locks.
+
+=back
 
 =head2 retry_job
 

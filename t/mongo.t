@@ -18,7 +18,7 @@ is $minion->backend->prefix, 'minion', 'right prefix';
 my $jobs    = $minion->backend->prefix('jobs_test')->jobs;
 my $workers = $minion->backend->workers;
 is $jobs->name, 'jobs_test.jobs', 'right name';
-$minion->reset;
+$minion->reset({all => 1});
 
 # Nothing to repair
 my $worker = $minion->repair->worker;
@@ -221,9 +221,23 @@ ok !$minion->guard('bar', 3600, {limit => 2}), 'not locked again';
 undef $guard;
 undef $guard3;
 
-# Reset
-$minion->reset->repair;
+# Reset (locks)
+$minion->lock('test', 3600);
+$minion->worker->register;
+ok $minion->backend->list_jobs(0, 1)->{total},    'jobs';
+ok $minion->backend->list_locks(0, 1)->{total},   'locks';
+ok $minion->backend->list_workers(0, 1)->{total}, 'workers';
+$minion->reset({locks => 1});
+ok $minion->backend->list_jobs(0, 1)->{total}, 'jobs';
+ok !$minion->backend->list_locks(0, 1)->{total}, 'no locks';
+ok $minion->backend->list_workers(0, 1)->{total}, 'workers';
 
+# Reset (all)
+$minion->lock('test', 3600);
+ok $minion->backend->list_jobs(0, 1)->{total},    'jobs';
+ok $minion->backend->list_locks(0, 1)->{total},   'locks';
+ok $minion->backend->list_workers(0, 1)->{total}, 'workers';
+$minion->reset({all => 1})->repair;
 foreach(qw(jobs locks workers)) {
     ok !$minion->backend->$_->count_documents({}), "no $_";
 }
