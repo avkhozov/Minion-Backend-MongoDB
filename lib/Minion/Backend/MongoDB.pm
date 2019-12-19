@@ -679,9 +679,8 @@ sub _worker_info {
 
 =head1 DESCRIPTION
 
-L<Minion::Backend::MongoDB> is a L<MongoDB> backend for L<Minion>
-derived from L<Minion::Backend::Pg> and supports its methods and tests
-up to 9.13 (2019-08-29).
+This is a L<MongoDB> backend for L<Minion> v10.01 (2019-12-16) derived from
+L<MongoDB::Minion::Pg> and which supports all its features.
 
 =head1 ATTRIBUTES
 
