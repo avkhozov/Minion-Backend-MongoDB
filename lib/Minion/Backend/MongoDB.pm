@@ -298,10 +298,11 @@ sub purge {
 
     # options keys: queues, states, older, tasks
     # defaults
-    $opts->{older} //= $s->minion->missing_after;
+    $opts->{older} //= $s->minion->remove_after;
+    $opts->{older_field} //= 'finished';
 
     my %match;
-    $match{created} = {'$lt' => DateTime->now->add(seconds =>
+    $match{$opts->{older_field}} = {'$lt' => DateTime->now->add(seconds =>
         -$opts->{older})};
     foreach (qw/queue state task/) {
         $match{$_}   = {'$in' => $opts->{$_.'s'}} if ($opts->{$_.'s'});
@@ -1121,7 +1122,15 @@ These options are currently available:
 
 Value in seconds to purge jobs older than this value.
 
-Default: $minion->missing_after
+Default: $minion->remove_after
+
+=item older_field
+
+  older_field => 'created'
+
+What date field to use to check if job is older than.
+
+Default: 'finished'
 
 =item queues
 

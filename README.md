@@ -6,7 +6,7 @@ Minion::Backend::MongoDB - MongoDB backend for Minion
 
 # VERSION
 
-version 1.05
+version 1.06
 
 # SYNOPSIS
 
@@ -16,9 +16,8 @@ version 1.05
 
 # DESCRIPTION
 
-[Minion::Backend::MongoDB](https://metacpan.org/pod/Minion::Backend::MongoDB) is a [MongoDB](https://metacpan.org/pod/MongoDB) backend for [Minion](https://metacpan.org/pod/Minion)
-derived from [Minion::Backend::Pg](https://metacpan.org/pod/Minion::Backend::Pg) and supports its methods and tests
-up to 9.13 (2019-08-29).
+This is a [MongoDB](https://metacpan.org/pod/MongoDB) backend for [Minion](https://metacpan.org/pod/Minion) v10.01 (2019-12-16) derived from
+[MongoDB::Minion::Pg](https://metacpan.org/pod/MongoDB::Minion::Pg) and which supports all its features.
 
 # ATTRIBUTES
 
@@ -424,7 +423,15 @@ These options are currently available:
 
     Value in seconds to purge jobs older than this value.
 
-    Default: $minion->missing\_after
+    Default: $minion->remove\_after
+
+- older\_field
+
+        older_field => 'created'
+
+    What date field to use to check if job is older than.
+
+    Default: 'finished'
 
 - queues
 
@@ -564,7 +571,7 @@ Emiliano Bruni <info@ebruni.it>, Andrey Khozov <avkhozov@gmail.com>
 
 # COPYRIGHT AND LICENSE
 
-This software is Copyright (c) 2019 by Emiliano Bruni, Andrey Khozov.
+This software is Copyright (c) 2019-2020 by Emiliano Bruni, Andrey Khozov.
 
 This is free software, licensed under:
 
