@@ -2,7 +2,7 @@
 
 Minion::Backend::MongoDB - MongoDB backend for Minion
 
-[![Build Status](https://travis-ci.org/avkhozov/Minion-Backend-MongoDB.png?branch=master)](https://travis-ci.org/avkhozov/Minion-Backend-MongoDB)
+[![Build Status](https://www.travis-ci.com/EmilianoBruni/Minion-Backend-MongoDB.svg?branch=master)](https://www.travis-ci.com/github/EmilianoBruni/Minion-Backend-MongoDB)
 
 # VERSION
 
