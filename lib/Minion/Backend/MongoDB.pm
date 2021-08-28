@@ -6,16 +6,18 @@ use Mojo::Base 'Minion::Backend';
 
 use boolean;
 use BSON::OID;
-use BSON::Types ':all';
+use BSON::Types qw(:all);
 use DateTime;
 use DateTime::Set;
 use DateTime::Span;
 use Mojo::IOLoop;
+use Mojo::Promise;
+#use Mojo::IOLoop::Delay;
 use Mojo::URL;
 use MongoDB;
-use Sys::Hostname 'hostname';
+use Sys::Hostname qw(hostname);
 use Tie::IxHash;
-use Time::HiRes 'time';
+use Time::HiRes qw(time);
 
 has 'dbclient';
 has 'mongodb';
@@ -46,16 +48,22 @@ sub dequeue {
   my ($self, $id, $wait, $options) = @_;
 
   if ((my $job = $self->_try($id, $options))) { return $job }
-  return undef if Mojo::IOLoop->is_running;
+  my $l = Mojo::IOLoop->singleton;
+  return undef if $l->is_running;
 
   # Capped collection for notifications
   $self->_notifications;
 
-  my $timer = Mojo::IOLoop->timer($wait => sub { Mojo::IOLoop->stop });
-  Mojo::IOLoop->delay(sub {
-      Mojo::IOLoop->stop if ($self->_await)
+  my $timer = $l->timer($wait => sub { $l->stop });
+  # my $rec = $l->recurring(0 => sub() {
+  #     $l->stop if ($self->_await)
+  # });
+  Mojo::Promise->new->resolve->then(sub() {
+      $l->stop if ($self->_await)
   })->wait;
-  Mojo::IOLoop->remove($timer);
+ #  $l->start;
+ # $l->remove($rec);
+  $l->remove($timer);
 
   return $self->_try($id, $options);
 
@@ -160,6 +168,7 @@ sub list_jobs {
   foreach (qw(_id state task queue)) {
       $imatch->{$_} = {'$in' => $options->{$_ . 's'}} if $options->{$_ . 's'};
   }
+  $imatch->{_id} = {'$lt' => $options->{before}} if (exists $options->{before});
   if ($options->{notes}) {
       foreach (@{$options->{notes}}) {
           $imatch->{"notes.$_"} = {'$exists' => 1}
@@ -246,6 +255,7 @@ sub list_workers {
   foreach (qw(_id)) {
       $match->{$_} = {'$in' => $options->{$_ . 's'}} if $options->{$_ . 's'};
   }
+  $match->{_id} = {'$lt' => $options->{before}} if (exists $options->{before});
 
   my $cursor = $self->workers->find($match);
   my $total = scalar($cursor->all);
@@ -791,10 +801,24 @@ Get information about a job or return C<undef> if job does not exist.
   my $batch = $backend->list_jobs($skip, $limit, {state => 'inactive'});
 
 Returns the same information as L</"job_info"> but in batches.
+  # Get the total number of results (without limit)
+  my $num = $backend->list_jobs(0, 100, {queues => ['important']})->{total};
+  # Check job state
+  my $results = $backend->list_jobs(0, 1, {ids => [$job_id]});
+  my $state = $results->{jobs}[0]{state};
+  # Get job result
+  my $results = $backend->list_jobs(0, 1, {ids => [$job_id]});
+  my $result = $results->{jobs}[0]{result};
 
 These options are currently available:
 
 =over 2
+
+=item before
+
+  before => 23
+
+List only jobs before this id.
 
 =item ids
 
@@ -1010,6 +1034,12 @@ Returns information about workers in batches.
 These options are currently available:
 
 =over 2
+
+=item before
+
+  before => 23
+
+List only workers before this id.
 
 =item ids
 

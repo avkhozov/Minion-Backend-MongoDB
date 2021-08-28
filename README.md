@@ -2,7 +2,7 @@
 
 Minion::Backend::MongoDB - MongoDB backend for Minion
 
-[![Build Status](https://www.travis-ci.com/EmilianoBruni/Minion-Backend-MongoDB.svg?branch=master)](https://www.travis-ci.com/github/EmilianoBruni/Minion-Backend-MongoDB)
+[![Build Status](https://travis-ci.org/avkhozov/Minion-Backend-MongoDB.png?branch=master)](https://travis-ci.org/avkhozov/Minion-Backend-MongoDB)
 
 # VERSION
 
@@ -17,11 +17,11 @@ version 1.06
 # DESCRIPTION
 
 This is a [MongoDB](https://metacpan.org/pod/MongoDB) backend for [Minion](https://metacpan.org/pod/Minion) v10.01 (2019-12-16) derived from
-[MongoDB::Minion::Pg](https://metacpan.org/pod/MongoDB::Minion::Pg) and which supports all its features.
+[MongoDB::Minion::Pg](https://metacpan.org/pod/MongoDB%3A%3AMinion%3A%3APg) and which supports all its features.
 
 # ATTRIBUTES
 
-[Minion::Backend::MongoDB](https://metacpan.org/pod/Minion::Backend::MongoDB) inherits all attributes from [Minion::Backend](https://metacpan.org/pod/Minion::Backend) and
+[Minion::Backend::MongoDB](https://metacpan.org/pod/Minion%3A%3ABackend%3A%3AMongoDB) inherits all attributes from [Minion::Backend](https://metacpan.org/pod/Minion%3A%3ABackend) and
 implements the following new ones.
 
 ## mongodb
@@ -29,21 +29,21 @@ implements the following new ones.
     my $mongodb = $backend->mongodb;
     $backend  = $backend->mongodb(MongoDB->new);
 
-[MongoDB::Database](https://metacpan.org/pod/MongoDB::Database) object used to store collections.
+[MongoDB::Database](https://metacpan.org/pod/MongoDB%3A%3ADatabase) object used to store collections.
 
 ## jobs
 
     my $jobs = $backend->jobs;
     $backend = $backend->jobs(MongoDB::Collection->new);
 
-[MongoDB::Collection](https://metacpan.org/pod/MongoDB::Collection) object for `jobs` collection, defaults to one based on ["prefix"](#prefix).
+[MongoDB::Collection](https://metacpan.org/pod/MongoDB%3A%3ACollection) object for `jobs` collection, defaults to one based on ["prefix"](#prefix).
 
 ## notifications
 
     my $notifications = $backend->notifications;
     $backend          = $backend->notifications(MongoDB::Collection->new);
 
-[MongoDB::Collection](https://metacpan.org/pod/MongoDB::Collection) object for `notifications` collection, defaults to one based on ["prefix"](#prefix).
+[MongoDB::Collection](https://metacpan.org/pod/MongoDB%3A%3ACollection) object for `notifications` collection, defaults to one based on ["prefix"](#prefix).
 
 ## prefix
 
@@ -57,11 +57,11 @@ Prefix for collections, defaults to `minion`.
     my $workers = $backend->workers;
     $backend    = $backend->workers(MongoDB::Collection->new);
 
-[MongoDB::Collection](https://metacpan.org/pod/MongoDB::Collection) object for `workers` collection, defaults to one based on ["prefix"](#prefix).
+[MongoDB::Collection](https://metacpan.org/pod/MongoDB%3A%3ACollection) object for `workers` collection, defaults to one based on ["prefix"](#prefix).
 
 # METHODS
 
-[Minion::Backend::MongoDB](https://metacpan.org/pod/Minion::Backend::MongoDB) inherits all methods from [Minion::Backend](https://metacpan.org/pod/Minion::Backend) and implements the following new ones.
+[Minion::Backend::MongoDB](https://metacpan.org/pod/Minion%3A%3ABackend%3A%3AMongoDB) inherits all methods from [Minion::Backend](https://metacpan.org/pod/Minion%3A%3ABackend) and implements the following new ones.
 
 ## broadcast
 
@@ -397,9 +397,9 @@ These options are currently available:
 
     my $backend = Minion::Backend::MongoDB->new('mongodb://127.0.0.1:27017');
 
-Construct a new [Minion::Backend::MongoDB](https://metacpan.org/pod/Minion::Backend::MongoDB) object. Required a
-[connection string URI](https://metacpan.org/pod/MongoDB::MongoClient#CONNECTION-STRING-URI). Optional
-every other attributes will be pass to [MongoDB::MongoClient](https://metacpan.org/pod/MongoDB::MongoClient) costructor.
+Construct a new [Minion::Backend::MongoDB](https://metacpan.org/pod/Minion%3A%3ABackend%3A%3AMongoDB) object. Required a
+[connection string URI](https://metacpan.org/pod/MongoDB%3A%3AMongoClient#CONNECTION-STRING-URI). Optional
+every other attributes will be pass to [MongoDB::MongoClient](https://metacpan.org/pod/MongoDB%3A%3AMongoClient) costructor.
 
 ## note
 
