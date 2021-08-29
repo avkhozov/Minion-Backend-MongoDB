@@ -6,9 +6,6 @@ use Test::More;
 
 plan skip_all => 'set TEST_ONLINE to enable this test' unless $ENV{TEST_ONLINE};
 
-use Mojo::File qw(curfile);
-use lib curfile->sibling('lib')->to_string;
-
 use Minion;
 use Mojo::IOLoop;
 use Mojo::Promise;
@@ -1100,68 +1097,89 @@ subtest 'Job dependencies' => sub {
     $worker->unregister;
 };
 
-subtest 'Custom task classes' => sub {
-  $minion->add_task(my_add       => 'MinionTest::AddTestTask');
-  $minion->add_task(my_other_add => 'MinionTest::AddTestTask');
-  $minion->add_task(my_empty     => 'MinionTest::EmptyTestTask');
-  $minion->add_task(my_no_result => 'MinionTest::NoResultTestTask');
-  $minion->add_task(my_fail      => 'MinionTest::FailTestTask');
-  is $minion->class_for_task('my_add'),       'MinionTest::AddTestTask',   'right class';
-  is $minion->class_for_task('my_empty'),     'MinionTest::EmptyTestTask', 'right class';
-  is $minion->class_for_task('long_running'), 'Minion::Job',               'right class';
-  is $minion->class_for_task('unknown'),      'Minion::Job',               'right class';
-
-  eval { $minion->add_task(my_missing => 'MinionTest::MissingTestTask') };
-  like $@, qr/Task "MinionTest::MissingTestTask" missing/, 'right error';
-  eval { $minion->add_task(my_syntax_error => 'MinionTest::SyntaxErrorTestTask') };
-  like $@, qr/Missing right curly or square bracket/, 'right error';
-  eval { $minion->add_task(my_bad => 'MinionTest::BadTestTask') };
-  like $@, qr/Task "MinionTest::BadTestTask" is not a Minion::Job subclass/, 'right error';
-
-  $minion->enqueue(my_add => [3, 5]);
+subtest 'Sequences' => sub {
   my $worker = $minion->worker->register;
-  ok my $job = $worker->dequeue(0), 'job dequeued';
-  isa_ok $job, 'MinionTest::AddTestTask', 'right class';
-  is $job->task, 'my_add', 'right task';
-  $job->perform;
-  is $job->info->{state},  'finished',       'right state';
-  is $job->info->{result}, 'My result is 8', 'right result';
+  my $id     = $minion->enqueue('test' => [] => {sequence => 'host:localhost'});
+  is $minion->job($id)->info->{previous}, undef, 'new sequence';
+  is $minion->job($id)->info->{next},     undef, 'new sequence';
+  my $id2 = $minion->enqueue('test' => [] => {sequence => 'host:localhost'});
+  is $minion->job($id2)->info->{previous}, $id,  'sequence in progress';
+  is $minion->job($id)->info->{next},      $id2, 'sequence in progress';
+  my $id3 = $minion->enqueue('test' => [] => {sequence => 'host:localhost', priority => 5});
+  is $minion->job($id3)->info->{previous}, $id2, 'sequence in progress';
+  is $minion->job($id)->info->{next},      $id2, 'sequence in progress';
+  my $job = $worker->dequeue(0);
+  is $job->id, $id, 'right id';
+  is $job->info->{sequence}, 'host:localhost', 'right sequence';
+  is $job->info->{priority}, 0,                'right priority';
+  is_deeply $job->info->{children}, [$id2], 'right children';
+  is_deeply $job->info->{parents}, [], 'no parents';
+  ok $job->finish, 'job finished';
+  my $job2 = $worker->dequeue(0);
+  is $job2->id, $id2, 'right id';
+  is $job2->info->{sequence}, 'host:localhost', 'right sequence';
+  is $job2->info->{previous}, $id,  'sequence in progress';
+  is $job2->info->{next},     $id3, 'sequence in progress';
+  is $job2->info->{priority}, 0, 'right priority';
+  is_deeply $job2->info->{children}, [$id3], 'right children';
+  is_deeply $job2->info->{parents},  [$id],  'right parents';
+  ok $job2->finish, 'job finished';
+  my $job3 = $worker->dequeue(0);
+  is $job3->id, $id3, 'right id';
+  is $job3->info->{sequence}, 'host:localhost', 'right sequence';
+  is $job3->info->{previous}, $id2, 'sequence in progress';
+  is $job3->info->{next},     undef, 'sequence is ending for now';
+  is $job3->info->{priority}, 5,     'right priority';
+  is_deeply $job3->info->{children}, [], 'no children';
+  is_deeply $job3->info->{parents}, [$id2], 'right parents';
+  ok $job3->finish, 'job finished';
 
-  $minion->enqueue(my_other_add => [5, 4]);
-  ok $job = $worker->dequeue(0), 'job dequeued';
-  isa_ok $job, 'MinionTest::AddTestTask', 'right class';
-  is $job->task, 'my_other_add', 'right task';
-  $job->perform;
-  is $job->info->{state},  'finished',       'right state';
-  is $job->info->{result}, 'My result is 9', 'right result';
+  my $id4 = $minion->enqueue('test' => [] => {sequence => 'host:localhost'});
+  is_deeply $job3->info->{children}, [$id4], 'right children';
+  my $job4 = $worker->dequeue(0);
+  is $job4->id, $id4, 'right id';
+  is $job4->info->{sequence}, 'host:localhost', 'right sequence';
+  is_deeply $job4->info->{children}, [], 'no children';
+  is_deeply $job4->info->{parents}, [$id3], 'right parents';
+  ok $job4->finish, 'job finished';
 
-  my $id = $minion->enqueue('my_no_result');
-  $minion->perform_jobs;
-  $job = $minion->job($id);
-  isa_ok $job, 'MinionTest::NoResultTestTask', 'right class';
-  isa_ok $job, 'MinionTest::AddTestTask',      'right class';
-  isa_ok $job, 'Minion::Job',                  'right class';
-  is $job->task, 'my_no_result', 'right task';
-  is $job->info->{state},  'finished', 'right state';
-  is $job->info->{result}, undef,      'right result';
+  my $id5  = $minion->enqueue('test' => [] => {sequence => 'host:localhost', parents => [$id, $id2]});
+  my $job5 = $worker->dequeue(0);
+  is $job5->id, $id5, 'right id';
+  is $job5->info->{sequence}, 'host:localhost', 'right sequence';
+  is_deeply $job5->info->{children}, [], 'no children';
+  is_deeply $job5->info->{parents}, [$id4, $id, $id2], 'right parents';
+  ok $job5->finish, 'job finished';
+  ok $minion->job($id5)->remove, 'job removed';
 
-  $id = $minion->enqueue('my_fail');
-  $minion->perform_jobs;
-  $job = $minion->job($id);
-  isa_ok $job, 'MinionTest::FailTestTask', 'right class';
-  is $job->task, 'my_fail', 'right task';
-  is $job->info->{state},  'failed',         'right state';
-  is $job->info->{result}, "my_fail failed", 'right result';
+  my $id6  = $minion->enqueue('test' => [] => {sequence => 'host:localhost'});
+  my $job6 = $worker->dequeue(0);
+  is $job6->id, $id6, 'right id';
+  is $job6->info->{sequence}, 'host:localhost', 'right sequence';
+  is $job6->info->{previous}, undef,            'sequence restarted';
+  is $job6->info->{next},     undef,            'sequence restarted';
+  is $job4->info->{next}, $id5, 'sequence restarted';
+  is_deeply $job6->info->{children}, [], 'no children';
+  is_deeply $job6->info->{parents},  [], 'no parents';
+  ok $job6->finish, 'job finished';
 
-  $id = $minion->enqueue('my_empty');
-  $minion->perform_jobs;
-  $job = $minion->job($id);
-  isa_ok $job, 'MinionTest::EmptyTestTask', 'right class';
-  is $job->task, 'my_empty', 'right task';
-  is $job->info->{state},    'failed',                                     'right state';
-  like $job->info->{result}, qr/Method "run" not implemented by subclass/, 'right result';
+  $id  = $minion->enqueue('test' => [] => {sequence => 'host:mojolicious.org'});
+  $job = $worker->dequeue(0);
+  is $job->id, $id, 'right id';
+  is $job->info->{sequence}, 'host:mojolicious.org', 'right sequence';
+  is_deeply $job->info->{children}, [], 'no children';
+  is_deeply $job->info->{parents},  [], 'no parents';
+  ok $job->finish, 'job finished';
+
+  is $minion->jobs({sequences => ['host:mojolicious.org']})->total, 1, 'one job';
+  is $minion->jobs({sequences => ['host:mojolicious.org']})->next->{id}, $id, 'same id';
+  is $minion->jobs({sequences => ['host:metacpan.org']})->total, 0, 'no jobs';
+  is $minion->jobs({sequences => ['host:localhost']})->total,    5, 'five jobs';
+  is $minion->jobs({sequences => ['host:localhost', 'host:mojolicious.org']})->total, 6, 'six jobs';
   $worker->unregister;
 };
+# We don't test custom classes. They works but it's backend indipendent so
+# it was test in Minion::Backend::Pg
 
 # Foreground
 subtest 'Foreground' => sub {

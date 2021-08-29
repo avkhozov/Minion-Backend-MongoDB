@@ -70,34 +70,25 @@ sub dequeue {
 }
 
 sub enqueue {
-  my ($self, $task) = (shift, shift);
-  my $args    = shift // [];
-  my $options = shift // {};
+  my ($self, $task, $args, $options) = (shift, shift, shift || [], shift || {});
 
   # Capped collection for notifications
   $self->_notifications;
 
-  @{$options->{parents}} = map $self->_oid($_), @{$options->{parents}}
-    if (exists $options->{parents});
+  my $id;
 
-  my $doc = {
-    args    => $args,
-    created => DateTime->from_epoch(epoch => time),
-    delayed  => DateTime->now()->add(seconds => $options->{delay} // 0),
-    priority => $options->{priority} // 0,
-    state    => 'inactive',
-    task     => $task,
-    retries  => 0,
-    attempts => $options->{attempts} // 1,
-    notes    => $options->{notes} || {},
-    parents  => $options->{parents} || [],
-    queue    => $options->{queue} // 'default',
-  };
+  if (my $seq = $options->{sequence}) {
+    my $prev = $self->jobs->find_one(
+        {sequence => $seq, next => undef}, {_id => 1});
+    unshift @{$options->{parents}}, $prev->{_id} if $prev;
+    $id = $self->_enqueue($task, $args, $options);
+    $self->jobs->update_one({_id => $prev->{_id}}, {'$set' => {next => $id}});
+  } else {
+    $id = $self->_enqueue($task, $args, $options);
+  }
 
-  my $res = $self->jobs->insert_one($doc);
-  my $id = $res->inserted_id->hex;
   $self->notifications->insert_one({c => 'created'});
-  return $id;
+  return $id->hex;
 }
 
 sub fail_job { shift->_update(1, @_) }
@@ -165,7 +156,7 @@ sub list_jobs {
   my $imatch    = {};
   $options->{'_ids'} = [map($self->_oid($_), @{$options->{ids}})]
     if $options->{ids};
-  foreach (qw(_id state task queue)) {
+  foreach (qw(_id state task queue sequence)) {
       $imatch->{$_} = {'$in' => $options->{$_ . 's'}} if $options->{$_ . 's'};
   }
   $imatch->{_id} = {'$lt' => $options->{before}} if (exists $options->{before});
@@ -182,16 +173,39 @@ sub list_jobs {
       foreignField  => 'parents',
       as            => 'children'
   }};
+  # (select id from minion_jobs where sequence = j.sequence and next = j.id) as previous,
+  my $l_previous = {'$lookup' => {
+      from          => $self->prefix . '.jobs',
+      let           => { sequence => '$sequence', next => '$_id'},
+      pipeline      => [
+        { '$match' => {
+            '$expr' => {
+                '$and' => [
+                    {'$eq' => ['$sequence', '$$sequence']},
+                    {'$eq' => ['$next', '$$next']},
+                ]
+            }
+        } },
+        { '$project' => { _id => 1 } },
+      ],
+      as            => 'previous'
+  }};
+  my $u_previous = { '$unwind' => {
+      path => '$previous', preserveNullAndEmptyArrays => true
+  } };
   my $skip      = { '$skip'     => 0 + $lskip },
   my $limit     = { '$limit'    => 0 + $llimit },
   my $sort      = { '$sort'     => { _id => -1 } };
   my $iproject  = {};
   foreach (qw(_id args attempts children notes priority queue result
-    retries state task worker)) {
+    retries state task worker sequence next previous)) {
         $iproject->{$_} = 1;
   }
   foreach (qw(parents)) {
         $iproject->{$_} = { '$ifNull' =>  ['$' . $_ , [] ]};
+  }
+  foreach (qw(previous)) {
+        $iproject->{$_} = { '$ifNull' =>  ['$' . $_ . '._id' , undef ]};
   }
   foreach (qw(created delayed finished retried started)) {
         $iproject->{$_} = {'$toLong' => {'$multiply' => [{
@@ -200,12 +214,13 @@ sub list_jobs {
   $iproject->{total} = { '$size' => '$children'};
   my $project   = { '$project' => $iproject};
 
-  my $aggregate = [$match, $lookup, $sort, $skip, $limit, $project];
-
+  my $aggregate = [$match, $lookup, $l_previous, $u_previous,
+    $sort, $skip, $limit, $project];
   my $cursor    = $self->jobs->aggregate($aggregate);
   my $total     = $self->jobs->count_documents($imatch);
 
   my $jobs = [map $self->_job_info($_), $cursor->all];
+
   return _total('jobs', $jobs, $total);
 }
 
@@ -349,6 +364,7 @@ sub register_worker {
   # indexes for jobs
   $self->jobs->indexes->create_one(Tie::IxHash->new(state => 1, delayed => 1, task => 1, queue => 1));
   $self->jobs->indexes->create_one(Tie::IxHash->new(finished => 1));
+  $self->jobs->indexes->create_one(Tie::IxHash->new(sequence => 1, next => 1));
   # indexes for locks
   $self->locks->indexes->create_one(Tie::IxHash->new(name => 1), {unique => 1});
   $self->locks->indexes->create_one(Tie::IxHash->new(expires => 1));
@@ -500,6 +516,31 @@ sub _await {
   return undef unless my @doc = $cursor->all;
   $self->{last} = $doc[-1]->{_id};
   return 1;
+}
+
+sub _enqueue {
+  my ($self, $task, $args, $options) = @_;
+  @{$options->{parents}} = map $self->_oid($_), @{$options->{parents}}
+    if (exists $options->{parents});
+
+  my $doc = {
+    args    => $args,
+    created => DateTime->from_epoch(epoch => time),
+    delayed  => DateTime->now()->add(seconds => $options->{delay} // 0),
+    priority => $options->{priority} // 0,
+    state    => 'inactive',
+    task     => $task,
+    retries  => 0,
+    attempts => $options->{attempts} // 1,
+    notes    => $options->{notes} || {},
+    parents  => $options->{parents} || [],
+    queue    => $options->{queue} // 'default',
+    sequence => $options->{sequence},
+  };
+
+  my $res = $self->jobs->insert_one($doc);
+  my $id = $res->inserted_id;
+  return $id;
 }
 
 sub _job_info {
@@ -758,21 +799,56 @@ return C<undef> if queue was empty.
   my $job_id = $backend->enqueue(foo => [@args]);
   my $job_id = $backend->enqueue(foo => [@args] => {priority => 1});
 
-Enqueue a new job with C<inactive> state. These options are currently available:
+Enqueue a new job with C<inactive> state.
+
+These options are currently available:
 
 =over 2
+
+=item attempts
+
+  attempts => 25
+
+Number of times performing this job will be attempted, with a delay based on L<Minion/"backoff"> after the first
+attempt, defaults to C<1>.
 
 =item delay
 
   delay => 10
 
-Delay job for this many seconds from now.
+Delay job for this many seconds (from now), defaults to C<0>.
+
+=item notes
+
+  notes => {foo => 'bar', baz => [1, 2, 3]}
+
+Hash reference with arbitrary metadata for this job.
+
+=item parents
+
+  parents => [$id1, $id2, $id3]
+
+One or more existing jobs this job depends on, and that need to have transitioned to the state C<finished> before it
+can be processed.
 
 =item priority
 
   priority => 5
 
-Job priority, defaults to C<0>.
+Job priority, defaults to C<0>. Jobs with a higher priority get performed first.
+
+=item queue
+
+  queue => 'important'
+
+Queue to put job in, defaults to C<default>.
+
+=item sequence
+
+  sequence => 'host:mojolicious.org'
+
+Sequence this job belongs to. The previous job from the sequence will be automatically added as a parent to continue the
+sequence. Note that this option is B<EXPERIMENTAL> and might change without warning!
 
 =back
 
@@ -839,6 +915,12 @@ and might change without warning!
 
 List only jobs in these queues.
 
+=item sequences
+
+  sequences => ['host:localhost', 'host:mojolicious.org']
+
+List only jobs from these sequences. Note that this option is B<EXPERIMENTAL> and might change without warning!
+
 =item state
 
   state => 'inactive'
@@ -899,11 +981,23 @@ Epoch time job was finished.
 
 Job id.
 
+=item next
+
+  next => 10024
+
+Next job in sequence.
+
 =item notes
 
   notes => {foo => 'bar', baz => [1, 2, 3]}
 
 Hash reference with arbitrary metadata for this job.
+
+=item previous
+
+  previous => 10022
+
+Previous job in sequence.
 
 =item parents
 
@@ -940,6 +1034,12 @@ Epoch time job has been retried.
   retries => 3
 
 Number of times job has been retried.
+
+=item sequence
+
+  sequence => 'host:mojolicious.org'
+
+Sequence name.
 
 =item started
 
