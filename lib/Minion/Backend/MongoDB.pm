@@ -202,7 +202,7 @@ sub list_jobs {
   my $sort      = { '$sort'     => { _id => -1 } };
   my $iproject  = {};
   foreach (qw(_id args attempts children notes priority queue result
-    retries state task worker sequence next previous expires)) {
+    retries state task worker sequence next previous expires lax)) {
         $iproject->{$_} = 1;
   }
   foreach (qw(parents)) {
@@ -493,7 +493,7 @@ sub retry_job {
     $dt_now->clone->add(seconds => $options->{expire})
         if exists $options->{expire};
 
-  foreach(qw(attempts parents priority queue)) {
+  foreach(qw(attempts parents priority queue lax)) {
       $update->{'$set'}->{$_} = $options->{$_} if (defined $options->{$_});
   }
 
@@ -586,6 +586,7 @@ sub _enqueue {
     sequence => $options->{sequence},
     expires  => $options->{expire} ? DateTime->now()->add(
         seconds => $options->{expire}) : undef,
+    lax      => $options->{lax} ? 1 : 0,
   };
 
   my $res = $self->jobs->insert_one($doc);
@@ -703,17 +704,30 @@ sub _try {
   my $find = 0;
   my $doc_matched;
   while ((my $doc = $docs->next) && !$find) {
-    # parents not exits or
-    # exists but are not in inactive, active, failed states
-    $find = !scalar @{$doc->{parents}} ||
+
+    $find =
+        # parents = '{}'
+        !scalar @{$doc->{parents}} ||
+        # not exist ... where
         !$self->jobs->count_documents({
-            _id => {'$in' => $doc->{parents}},
-            '$or' => [
-                { state => {'$in' => ['active', 'failed']} },
-                { state => 'inactive', '$or'     => [
-                    { expires => undef },
-                    { expires => {'$gt' => $now } }
-                ]},
+            '$and' => [
+                { _id => {'$in' => $doc->{parents}} }, # (id = any parents) and
+                {
+                    '$or' => [
+                        { state => 'active' },
+                        { '$and' => [
+                            { state => 'failed'},
+                            { _id => {'$exists' => !$doc->{lax} }  } # a bad way to say "not doc.lax"
+                        ] },
+                        { '$and' => [
+                            { state => 'inactive' },
+                            { '$or' => [
+                                {expires => undef },
+                                {expires => {'$gt' => DateTime->now }}
+                            ]},
+                        ]},
+                    ]
+                },
             ]
     });
     $doc_matched = $doc if $find;
@@ -754,10 +768,10 @@ sub _update {
 
   return undef unless ($doc->{attempts});
 
-  return 1 if !$fail || (my $attempts = $doc->{attempts}) == 1;
-  return 1 if $retries >= ($attempts - 1);
-  my $delay = $self->minion->backoff->($retries);
-  return $self->retry_job($id, $retries, {delay => $delay});
+  # return 1 if !$fail || (my $attempts = $doc->{attempts}) == 1;
+  # return 1 if $retries >= ($attempts - 1);
+  # my $delay = $self->minion->backoff->($retries);
+  return $fail ? $self->auto_retry_job($id, $retries, $doc->{attempts}) : 1;
 }
 
 sub _worker_info {
@@ -878,6 +892,20 @@ attempt, defaults to C<1>.
   delay => 10
 
 Delay job for this many seconds (from now), defaults to C<0>.
+
+=item expire
+
+  expire => 300
+
+Job is valid for this many seconds (from now) before it expires. Note that this option is B<EXPERIMENTAL> and might
+change without warning!
+
+=item lax
+
+  lax => 1
+
+Existing jobs this job depends on may also have transitioned to the C<failed> state to allow for it to be processed,
+defaults to C<false>. Note that this option is B<EXPERIMENTAL> and might change without warning!
 
 =item notes
 
