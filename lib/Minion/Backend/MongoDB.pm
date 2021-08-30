@@ -164,6 +164,11 @@ sub list_jobs {
           $imatch->{"notes.$_"} = {'$exists' => 1}
       }
   }
+  $imatch->{'$or'} = [
+      { state => {'$ne' => 'inactive'} },
+      { expires => undef },
+      { expires => {'$gt' => DateTime->now }}
+  ];
 
   my $match     = { '$match' => $imatch };
   my $lookup    = {'$lookup' => {
@@ -197,7 +202,7 @@ sub list_jobs {
   my $sort      = { '$sort'     => { _id => -1 } };
   my $iproject  = {};
   foreach (qw(_id args attempts children notes priority queue result
-    retries state task worker sequence next previous)) {
+    retries state task worker sequence next previous expires)) {
         $iproject->{$_} = 1;
   }
   foreach (qw(parents)) {
@@ -206,7 +211,7 @@ sub list_jobs {
   foreach (qw(previous)) {
         $iproject->{$_} = { '$ifNull' =>  ['$' . $_ . '._id' , undef ]};
   }
-  foreach (qw(created delayed finished retried started)) {
+  foreach (qw(created delayed finished retried started expires)) {
         $iproject->{$_} = {'$toLong' => {'$multiply' => [{
             '$convert' => { 'input' => '$'. $_, to => 'long'}}, 0.001]}};
   }
@@ -364,6 +369,7 @@ sub register_worker {
   $self->jobs->indexes->create_one(Tie::IxHash->new(state => 1, delayed => 1, task => 1, queue => 1));
   $self->jobs->indexes->create_one(Tie::IxHash->new(finished => 1));
   $self->jobs->indexes->create_one(Tie::IxHash->new(sequence => 1, next => 1));
+  $self->jobs->indexes->create_one(Tie::IxHash->new(expires => 1));
   # indexes for locks
   $self->locks->indexes->create_one(Tie::IxHash->new(name => 1), {unique => 1});
   $self->locks->indexes->create_one(Tie::IxHash->new(expires => 1));
@@ -389,12 +395,49 @@ sub repair {
   my $self   = shift;
   my $minion = $self->minion;
 
+  my $now = DateTime->now;
   # Workers without heartbeat
   $self->workers->delete_many({notified => {
-      '$lt' => DateTime->now->subtract(seconds => $minion->missing_after)}});
+      '$lt' => $now->clone->subtract(seconds => $minion->missing_after)}});
+
+  my $jobs = $self->jobs;
+
+  # Old jobs with no unresolved dependencies and expired jobs
+
+  # find: select 1 from minion_jobs where parents @> ARRAY[j.id] and state != 'finished'
+  my $docs = $jobs->aggregate([
+    { '$match' => {
+        state => 'finished',
+        finished => {
+            '$lte' => $now->clone->subtract(seconds => $minion->remove_after)
+        }
+    }},
+    {'$lookup' => {
+        from => $self->prefix . '.jobs',
+        let => { parent => '$_id' },
+        pipeline => [
+            { '$match' =>
+                {'$expr' => {
+                    '$and' => [
+                        { '$in' => ['$$parent', '$parents'] },
+                        { '$ne'=> ['$state', 'finished'] },
+                    ],
+                } },
+            },
+        ],
+        as => 'parents'
+    } },
+  ]);
+  my @ids_to_delete;
+  while (my $doc = $docs->next) {
+      push @ids_to_delete, $doc->{_id} unless (scalar($doc->{parents}->@*));
+  }
+  $jobs->delete_many({_id => {'$in' => \@ids_to_delete}});
+
+  # or (expires <= now() and state = 'inactive')
+  $jobs->delete_many( { expires => { '$lte' => $now } , state => 'inactive' } );
 
   # Jobs with missing worker (can be retried)
-  my $jobs = $self->jobs;
   my $cursor = $jobs->find({
       state => 'active',
       queue => {'$ne' => 'minion_foreground'}
@@ -410,26 +453,13 @@ sub repair {
     {
         state => 'inactive',
         delayed => {
-            '$lt' => DateTime->now->subtract(seconds => $minion->stuck_after)
+            '$lt' => $now->clone->subtract(seconds => $minion->stuck_after)
         },
     }, {
         '$set' => { state => 'failed', result => 'Job appears stuck in queue' }
     }
   );
 
-  # Old jobs with no unresolved dependencies
-  $cursor = $jobs->find(
-    {state => 'finished', finished => {
-        '$lt' => DateTime->from_epoch(epoch => time - $minion->remove_after)}}
-  );
-
-  while (my $job = $cursor->next) {
-    $jobs->delete_one({_id => $job->{_id}})
-        unless ($self->jobs->count_documents({
-            parents => $job->{_id},
-            state => {'$ne' => 'finished'}
-        }));
-  }
 }
 
 sub reset {
@@ -455,9 +485,13 @@ sub retry_job {
     '$set' => {
       retried => $dt_now,
       state   => 'inactive',
-      delayed => $dt_now->clone->add(seconds => $options->{delay})
+      delayed => $dt_now->clone->add(seconds => $options->{delay}||0),
     },
   };
+
+  $update->{'$set'}->{expires} =
+    $dt_now->clone->add(seconds => $options->{expire})
+        if exists $options->{expire};
 
   foreach(qw(attempts parents priority queue)) {
       $update->{'$set'}->{$_} = $options->{$_} if (defined $options->{$_});
@@ -477,7 +511,11 @@ sub stats {
       ->{values}};
   my $all = $self->workers->count_documents({});
   my $stats = {active_workers => $active, inactive_workers => $all - $active};
-  $stats->{"${_}_jobs"} = $jobs->count_documents({state => $_}) for qw(active failed finished inactive);
+  $stats->{inactive_jobs} = $jobs->count_documents({state => 'inactive', '$or' => [
+    { expires => undef },
+    { expires => {'$gt' => DateTime->now} },
+  ]});
+  $stats->{"${_}_jobs"} = $jobs->count_documents({state => $_}) for qw(active failed finished);
   $stats->{active_locks} = $self->list_locks->{total};
   $stats->{delayed_jobs} = $self->jobs->count_documents({
       state => 'inactive',
@@ -546,6 +584,8 @@ sub _enqueue {
     parents  => $options->{parents} || [],
     queue    => $options->{queue} // 'default',
     sequence => $options->{sequence},
+    expires  => $options->{expire} ? DateTime->now()->add(
+        seconds => $options->{expire}) : undef,
   };
 
   my $res = $self->jobs->insert_one($doc);
@@ -644,11 +684,17 @@ sub _total {
 sub _try {
   my ($self, $id, $options) = @_;
 
+  my $now = DateTime->now;
+
   my $match = Tie::IxHash->new(
-    delayed   => {'$lt' => DateTime->from_epoch(epoch => time)},
+    delayed   => {'$lte' => $now },
     state     => 'inactive',
     task      => {'$in' => [keys %{$self->minion->tasks}]},
-    queue     => {'$in' => $options->{queues} // ['default']}
+    queue     => {'$in' => $options->{queues} // ['default']},
+    '$or'     => [
+        { expires => undef },
+        { expires => {'$gt' => $now } }
+    ],
   );
   $match->Push('_id' => $self->_oid($options->{id})) if defined $options->{id};
 
@@ -662,11 +708,16 @@ sub _try {
     $find = !scalar @{$doc->{parents}} ||
         !$self->jobs->count_documents({
             _id => {'$in' => $doc->{parents}},
-            state => {'$in' => ['inactive', 'active', 'failed']}
+            '$or' => [
+                { state => {'$in' => ['active', 'failed']} },
+                { state => 'inactive', '$or'     => [
+                    { expires => undef },
+                    { expires => {'$gt' => $now } }
+                ]},
+            ]
     });
     $doc_matched = $doc if $find;
   }
-
   return undef unless $doc_matched;
 
   my $doc = [

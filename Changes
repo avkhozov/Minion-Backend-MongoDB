@@ -1,8 +1,9 @@
 Revision history for Perl extension Minion-Backend-MongoDB
 
 1.07 2021-09-xxTXX:XX:XXZ (ebruni)
+    - Added support for expiring jobs.
     - Improved repair method to detect stuck jobs
-    - Add support for job sequences.
+    - Add support for job sequences (removed in Minion 10.12).
     - Add before options to list_jobs and list_workers methods.
 
 1.06 2020-03-14T12:11:10Z (ebruni)

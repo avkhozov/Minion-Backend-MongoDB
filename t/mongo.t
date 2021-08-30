@@ -183,9 +183,7 @@ subtest 'Repair stuck jobs' => sub {
   my $id2    = $minion->enqueue('test');
   my $id3    = $minion->enqueue('test');
   my $id4    = $minion->enqueue('test');
-  # $minion->backend->pg->db->query("UPDATE minion_jobs SET delayed = NOW() - ? * INTERVAL '1 second' WHERE id = ?",
-  #   $minion->stuck_after + 1, $_)
-  #
+
     $minion->backend->jobs->update_one(
         {_id => $minion->backend->_oid($_)},
         {'$set' => {
@@ -864,69 +862,40 @@ subtest 'Multiple attempts while processing' => sub {
     is $minion->backoff->(4),  271,    'right result';
     is $minion->backoff->(5),  640,    'right result';
     is $minion->backoff->(25), 390640, 'right result';
-
-    my $id     = $minion->enqueue(exit => [] => {attempts => 3});
+    my $id     = $minion->enqueue(exit => [] => {attempts => 2});
     my $worker = $minion->worker->register;
     ok my $job = $worker->dequeue(0), 'job dequeued';
     is $job->id, $id, 'right id';
     is $job->retries, 0, 'job has not been retried';
+    $job->perform;
     my $info = $job->info;
-    is $info->{attempts}, 3,        'three attempts';
-    is $info->{state},    'active', 'right state';
+    is $info->{attempts}, 2,                                                       'job will be attempted twice';
+    is $info->{state},    'inactive',                                              'right state';
+    is $info->{result},   'Job terminated unexpectedly (exit code: 1, signal: 0)', 'right result';
+    ok $info->{retried} < $job->info->{delayed}, 'delayed timestamp';
+    is $job->info->{state}, 'inactive', 'right state';
+
+    $minion->backend->jobs->update_one(
+        {_id => $minion->backend->_oid($id)},
+        {'$set' => {delayed => DateTime->now}}
+    );
+    ok $job = $worker->register->dequeue(0), 'job dequeued';
+    is $job->id, $id, 'right id';
+    is $job->retries, 1, 'job has been retried once';
     $job->perform;
     $info = $job->info;
-    # DA QUI IN POI FALLISCE
-    # is $info->{attempts}, 2,'two attempts';
-    # is $info->{state},    'inactive','right state';
-    # is $info->{result},   'Job terminated unexpectedly (exit code: 1, signal: 0)', 'right result';
-    # ok $info->{retried} < $job->info->{delayed}, 'delayed timestamp';
-    #
-    # $minion->backend->jobs->update_one(
-    #     {_id => $minion->backend->_oid($id)},
-    #     {'$set' => {delayed => DateTime->now}}
-    # );
-    # ok $job = $worker->dequeue(0), 'job dequeued';
-    # is $job->id, $id, 'right id';
-    # is $job->retries, 1, 'job has been retried once';
-    # $info = $job->info;
-    # is $info->{attempts}, 2,        'two attempts';
-    # is $info->{state},    'active', 'right state';
-    # $job->perform;
-    # $info = $job->info;
-    # is $info->{attempts}, 1,          'one attempt';
-    # is $info->{state},    'inactive', 'right state';
-    #
-    # $minion->backend->jobs->update_one(
-    #     {_id => $minion->backend->_oid($id)},
-    #     {'$set' => {delayed => DateTime->now}}
-    # );
-    # ok $job = $worker->register->dequeue(0), 'job dequeued';
-    # is $job->id, $id, 'right id';
-    # is $job->retries, 2, 'two retries';
-    # $info = $job->info;
-    # is $info->{attempts}, 1,        'one attempt';
-    # is $info->{state},    'active', 'right state';
-    # $job->perform;
-    # $info = $job->info;
-    # is $info->{attempts}, 1,                                                       'one attempt';
-    # is $info->{state},    'failed',                                                'right state';
-    # is $info->{result},   'Job terminated unexpectedly (exit code: 1, signal: 0)', 'right result';
-    # ok $job->retry({attempts => 2}), 'job retried';
-    # ok $job = $worker->register->dequeue(0), 'job dequeued';
-    # is $job->id, $id, 'right id';
-    # $job->perform;
-    # is $job->info->{state}, 'inactive', 'right state';
-    #
-    # $minion->backend->jobs->update_one(
-    #     {_id => $minion->backend->_oid($id)},
-    #     {'$set' => {delayed => DateTime->now}}
-    # );
-    #
-    # ok $job = $worker->register->dequeue(0), 'job dequeued';
-    # is $job->id, $id, 'right id';
-    # $job->perform;
-    # is $job->info->{state}, 'failed', 'right state';
-    # $worker->unregister;
+    is $info->{attempts}, 2,                                                       'job will be attempted twice';
+    is $info->{state},    'failed',                                                'right state';
+    is $info->{result},   'Job terminated unexpectedly (exit code: 1, signal: 0)', 'right result';
+    ok $job->retry({attempts => 3}), 'job retried';
+    ok $job = $worker->register->dequeue(0), 'job dequeued';
+    is $job->id, $id, 'right id';
+    $job->perform;
+    $info = $job->info;
+    is $info->{attempts}, 3,                                                       'job will be attempted three times';
+    is $info->{state},    'failed',                                                'right state';
+    is $info->{result},   'Job terminated unexpectedly (exit code: 1, signal: 0)', 'right result';
+    $worker->unregister;
 };
 
 # Multiple attempts during maintenance
@@ -1078,7 +1047,7 @@ subtest 'Job dependencies' => sub {
     is $minion->repair->stats->{finished_jobs}, 2, 'two finished jobs';
     ok $job->finish, 'job finished';
     is $minion->stats->{finished_jobs}, 3, 'three finished jobs';
-    is $minion->repair->stats->{finished_jobs}, 0, 'no finished jobs';
+    is $minion->repair->remove_after(172800)->stats->{finished_jobs}, 0, 'no finished jobs';
     my $fake_hex = '00000000000000000000000';
     $id = $minion->enqueue(test => [] => {parents => ["${fake_hex}1"]});
     $job = $worker->dequeue(0);
@@ -1094,6 +1063,100 @@ subtest 'Job dependencies' => sub {
     is_deeply $job->info->{parents}, ["${fake_hex}1", "${fake_hex}2"], 'right parents';
     ok $job->finish, 'job finished';
     $worker->unregister;
+};
+
+subtest 'Expiring jobs' => sub {
+  my $id = $minion->enqueue('test');
+  is $minion->job($id)->info->{expires}, undef, 'no expires timestamp';
+  $minion->job($id)->remove;
+
+  $id = $minion->enqueue('test' => [] => {expire => 300});
+  like $minion->job($id)->info->{expires}, qr/^[\d.]+$/, 'has expires timestamp';
+  my $worker = $minion->worker->register;
+  ok my $job = $worker->dequeue(0), 'job dequeued';
+  is $job->id, $id, 'right id';
+  my $expires = $job->info->{expires};
+  like $expires, qr/^[\d.]+$/, 'has expires timestamp';
+  ok $job->finish, 'job finished';
+  ok $job->retry({expire => 600}), 'job retried';
+  my $info = $minion->job($id)->info;
+  is $info->{state},     'inactive',   'rigth state';
+  like $info->{expires}, qr/^[\d.]+$/, 'has expires timestamp';
+  isnt $info->{expires}, $expires, 'retried with new expires timestamp';
+  is $minion->repair->jobs({states => ['inactive']})->total, 1, 'job has not expired yet';
+  ok $job = $worker->dequeue(0), 'job dequeued';
+  is $job->id, $id, 'right id';
+  ok $job->finish, 'job finished';
+
+  $id = $minion->enqueue('test' => [] => {expire => 300});
+  is $minion->repair->jobs({states => ['inactive']})->total, 1, 'job has not expired yet';
+  my $db = $minion->backend;
+  $db->jobs->update_many(
+        {_id => $db->_oid($id)},
+        {'$set' => {
+            'expires' => DateTime->now->subtract(days => 1)
+        }}
+  );
+  is $minion->jobs({states => ['inactive']})->total, 0, 'job has expired';
+  ok !$worker->dequeue(0), 'job has expired';
+  ok $db->jobs->find_one({_id => $db->_oid($id)}), 'job still exists in database';;
+  $minion->repair;
+  ok !$db->jobs->find_one({_id => $db->_oid($id)}), 'job no longer exists in database';
+
+  $id = $minion->enqueue('test' => [] => {expire => 300});
+  ok $job = $worker->dequeue(0), 'job dequeued';
+  is $job->id, $id, 'right id';
+  ok $job->finish, 'job finished';
+  $db->jobs->update_many(
+        {_id => $db->_oid($id)},
+        {'$set' => {
+            'expires' => DateTime->now->subtract(days => 1)
+        }}
+  );
+  $minion->repair;
+  ok $job = $minion->job($id), 'job still exists';
+  is $job->info->{state}, 'finished', 'right state';
+
+  $id = $minion->enqueue('test' => [] => {expire => 300});
+  ok $job = $worker->dequeue(0), 'job dequeued';
+  is $job->id, $id, 'right id';
+  ok $job->fail, 'job failed';
+  $db->jobs->update_many(
+        {_id => $db->_oid($id)},
+        {'$set' => {
+            'expires' => DateTime->now->subtract(days => 1)
+        }}
+  );
+  $minion->repair;
+  ok $job = $minion->job($id), 'job still exists';
+  is $job->info->{state}, 'failed', 'right state';
+
+  $id = $minion->enqueue('test' => [] => {expire => 300});
+  ok $job = $worker->dequeue(0), 'job dequeued';
+  is $job->id, $id, 'right id';
+  $db->jobs->update_many(
+        {_id => $db->_oid($id)},
+        {'$set' => {
+            'expires' => DateTime->now->subtract(days => 1)
+        }}
+  );
+  $minion->repair;
+  ok $job = $minion->job($id), 'job still exists';
+  is $job->info->{state}, 'active', 'right state';
+  ok $job->finish, 'job finished';
+
+  $id = $minion->enqueue('test' => [] => {expire => 300});
+  my $id2 = $minion->enqueue('test' => [] => {parents => [$id]});
+  ok !$worker->dequeue(0, {id => $id2}), 'parent is still inactive';
+  $db->jobs->update_many(
+        {_id => $db->_oid($id)},
+        {'$set' => {
+            'expires' => DateTime->now->subtract(days => 1)
+        }}
+  );
+  ok $job = $worker->dequeue(0, {id => $id2}), 'parent has expired';
+  ok $job->finish, 'job finished';
+  $worker->unregister;
 };
 
 subtest 'Sequences' => sub {
