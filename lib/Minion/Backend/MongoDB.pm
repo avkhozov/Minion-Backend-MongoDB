@@ -12,7 +12,6 @@ use DateTime::Set;
 use DateTime::Span;
 use Mojo::IOLoop;
 use Mojo::Promise;
-#use Mojo::IOLoop::Delay;
 use Mojo::URL;
 use MongoDB;
 use Sys::Hostname qw(hostname);
@@ -390,13 +389,11 @@ sub repair {
   my $self   = shift;
   my $minion = $self->minion;
 
-  # Check worker registry
-  my $workers = $self->workers;
+  # Workers without heartbeat
+  $self->workers->delete_many({notified => {
+      '$lt' => DateTime->now->subtract(seconds => $minion->missing_after)}});
 
-  $workers->delete_many({notified => {
-      '$lt' => DateTime->from_epoch(epoch => time - $minion->missing_after)}});
-
-  # Abandoned jobs
+  # Jobs with missing worker (can be retried)
   my $jobs = $self->jobs;
   my $cursor = $jobs->find({
       state => 'active',
@@ -404,8 +401,21 @@ sub repair {
   });
   while (my $job = $cursor->next) {
     $self->fail_job(@$job{qw(_id retries)}, 'Worker went away')
-        unless $workers->count_documents({_id => $job->{worker}});
+        unless $self->workers->count_documents({_id => $job->{worker}});
   }
+
+  # Jobs in queue without workers or not enough workers
+  # (cannot be retried and requires admin attention)
+  $jobs->update_many(
+    {
+        state => 'inactive',
+        delayed => {
+            '$lt' => DateTime->now->subtract(seconds => $minion->stuck_after)
+        },
+    }, {
+        '$set' => { state => 'failed', result => 'Job appears stuck in queue' }
+    }
+  );
 
   # Old jobs with no unresolved dependencies
   $cursor = $jobs->find(

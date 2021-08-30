@@ -201,12 +201,11 @@ subtest 'Repair stuck jobs' => sub {
   is $job2->info->{state}, 'active', 'job is still active';
   ok $job2->finish, 'job finished';
   my $job = $minion->job($id);
-  #### FALLISCONO
-  # is $job->info->{state},  'failed',                     'job is no longer active';
-  # is $job->info->{result}, 'Job appears stuck in queue', 'right result';
-  # my $job3 = $minion->job($id3);
-  # is $job3->info->{state},  'failed',                     'job is no longer active';
-  # is $job3->info->{result}, 'Job appears stuck in queue', 'right result';
+  is $job->info->{state},  'failed',                     'job is no longer active';
+  is $job->info->{result}, 'Job appears stuck in queue', 'right result';
+  my $job3 = $minion->job($id3);
+  is $job3->info->{state},  'failed',                     'job is no longer active';
+  is $job3->info->{result}, 'Job appears stuck in queue', 'right result';
   my $job4 = $minion->job($id4);
   is $job4->info->{state},  'finished', 'job is still finished';
   is $job4->info->{result}, 'Works!',   'right result';
