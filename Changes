@@ -1,6 +1,7 @@
 Revision history for Perl extension Minion-Backend-MongoDB
 
 1.07 2021-09-xxTXX:XX:XXZ (ebruni)
+
     - Added support for high priority fast lane (Minion 10.17).
     - Added support for lax dependencies (Minon 10.13).
     - Added support for expiring jobs (Minion 10.12).
