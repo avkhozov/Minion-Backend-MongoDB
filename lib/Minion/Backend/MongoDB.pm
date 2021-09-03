@@ -947,7 +947,9 @@ sub _worker_info {
 
 1;
 
-=encoding utf8
+=pod
+
+=encoding UTF-8
 
 =head1 SYNOPSIS
 
@@ -957,8 +959,10 @@ sub _worker_info {
 
 =head1 DESCRIPTION
 
-This is a L<MongoDB> backend for L<Minion> v10.01 (2019-12-16) derived from
-L<MongoDB::Minion::Pg> and which supports all its features.
+This is a L<MongoDB> backend for L<Minion> derived from
+L<MongoDB::Minion::Pg> and supports for all its features.
+L<Mojolicious> 9.0 compatibility and synced with L<MongoDB::Minion::Pg> v.10.22
+features.
 
 =head1 ATTRIBUTES
 
@@ -1692,6 +1696,20 @@ User must have this roles
                         "db" : "minion"
                 }
         ]
+
+=head1 BUGS/CONTRIBUTING
+
+Please report any bugs through the web interface at L<https://github.com/avkhozov/Minion-Backend-MongoDB/issues>
+If you want to contribute changes or otherwise involve yourself in development, feel free to fork the Git repository from
+L<https://github.com/avkhozov/Minion-Backend-MongoDB/>.
+
+=head1 SUPPORT
+
+You can find this documentation with the perldoc command too.
+
+    perldoc Mojo::Leds
+
+=cut
 
 =head1 SEE ALSO
 
