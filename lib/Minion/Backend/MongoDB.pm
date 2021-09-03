@@ -698,6 +698,8 @@ sub _try {
     ],
   );
   $match->Push('_id' => $self->_oid($options->{id})) if defined $options->{id};
+  $match->Push('priority' => {'$gte' => $options->{min_priority}})
+    if exists $options->{min_priority};
 
   my $docs = $self->jobs->find($match)->sort({priority => -1, id => 1});
 

@@ -1,12 +1,12 @@
 Revision history for Perl extension Minion-Backend-MongoDB
 
 1.07 2021-09-xxTXX:XX:XXZ (ebruni)
-    - Remove this comment: Sync until Minion 10.16
-    - Added support for lax dependencies.
-    - Added support for expiring jobs.
-    - Improved repair method to detect stuck jobs
+    - Added support for high priority fast lane (Minion 10.17).
+    - Added support for lax dependencies (Minon 10.13).
+    - Added support for expiring jobs (Minion 10.12).
+    - Improved repair method to detect stuck jobs (Minion 10.10).
     - Add support for job sequences (removed in Minion 10.12).
-    - Add before options to list_jobs and list_workers methods.
+    - Add before options to list_jobs and list_workers methods (Minion 10.03).
 
 1.06 2020-03-14T12:11:10Z (ebruni)
 
