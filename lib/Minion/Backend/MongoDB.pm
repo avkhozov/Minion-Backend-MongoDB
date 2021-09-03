@@ -1039,6 +1039,7 @@ Dequeue a specific job.
   min_priority => 3
 
 Do not dequeue jobs with a lower priority.
+
 =item queues
 
   queues => ['important']
@@ -1074,6 +1075,8 @@ Number of times job has been retried.
   task => 'foo'
 
 Task name.
+
+=back
 
 =head2 enqueue
 
@@ -1174,6 +1177,7 @@ Get information about a job or return C<undef> if job does not exist.
   my $batch = $backend->list_jobs($skip, $limit, {state => 'inactive'});
 
 Returns the same information as L</"job_info"> but in batches.
+
   # Get the total number of results (without limit)
   my $num = $backend->list_jobs(0, 100, {queues => ['important']})->{total};
   # Check job state
@@ -1707,9 +1711,7 @@ L<https://github.com/avkhozov/Minion-Backend-MongoDB/>.
 
 You can find this documentation with the perldoc command too.
 
-    perldoc Mojo::Leds
-
-=cut
+    perldoc Minion::Backend::MongoDB
 
 =head1 SEE ALSO
 
