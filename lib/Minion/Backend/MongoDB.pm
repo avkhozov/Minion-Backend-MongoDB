@@ -2,6 +2,8 @@ package Minion::Backend::MongoDB;
 
 # ABSTRACT: MongoDB backend for Minion
 
+use 5.016; # Minion requires this so we require this.
+
 use Mojo::Base 'Minion::Backend';
 
 use boolean;
@@ -960,8 +962,8 @@ sub _worker_info {
 =head1 DESCRIPTION
 
 This is a L<MongoDB> backend for L<Minion> derived from
-L<MongoDB::Minion::Pg> and supports for all its features.
-L<Mojolicious> 9.0 compatibility and synced with L<MongoDB::Minion::Pg> v.10.22
+L<Minion::Backend::Pg> and supports for all its features.
+L<Mojolicious> 9.0 compatibility and synced with L<Minion::Backend::Pg> v.10.22
 features.
 
 =head1 ATTRIBUTES
