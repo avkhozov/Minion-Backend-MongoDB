@@ -1,5 +1,9 @@
 Revision history for Perl extension Minion-Backend-MongoDB
 
+1.08 2021-09-05T17:03:00Z (ebruni)
+
+    - Removed verbose prereqs and reduce perl minimum version.
+
 1.07 2021-09-03T17:43:00Z (ebruni)
 
     - Added support for high priority fast lane (Minion 10.17).
