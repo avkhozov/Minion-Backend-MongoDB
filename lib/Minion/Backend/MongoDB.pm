@@ -2,7 +2,7 @@ package Minion::Backend::MongoDB;
 
 # ABSTRACT: MongoDB backend for Minion
 
-use 5.016; # Minion requires this so we require this.
+use 5.016;    # Minion requires this so we require this.
 
 use Mojo::Base 'Minion::Backend';
 
@@ -35,7 +35,7 @@ sub broadcast {
       ( shift, shift, shift || [], shift || [] );
 
     my $match = {};
-    my @ids = map $s->_oid($_), @$ids;
+    my @ids   = map $s->_oid($_), @$ids;
     $match->{_id} = { '$in' => \@ids } if ( scalar(@ids) );
     my $res = $s->workers->update_many( $match,
         { '$push' => { inbox => [ $command, @$args ] } } );
@@ -50,8 +50,6 @@ sub dequeue {
     my $l = Mojo::IOLoop->singleton;
     return undef if $l->is_running;
 
-    # Capped collection for notifications
-    $self->_notifications;
 
     my $timer = $l->timer( $wait => sub { $l->stop } );
     Mojo::Promise->new->resolve->then(
@@ -68,9 +66,6 @@ sub dequeue {
 sub enqueue {
     my ( $self, $task, $args, $options ) =
       ( shift, shift, shift || [], shift || {} );
-
-    # Capped collection for notifications
-    $self->_notifications;
 
     my $id;
 
@@ -195,7 +190,7 @@ sub list_jobs {
         }
     };
 
-    # (select id from minion_jobs where sequence = j.sequence and next = j.id) as previous,
+# (select id from minion_jobs where sequence = j.sequence and next = j.id) as previous,
     my $l_previous = {
         '$lookup' => {
             from     => $self->prefix . '.jobs',
@@ -410,6 +405,8 @@ sub receive {
 sub register_worker {
     my ( $self, $id, $options ) = @_;
 
+    $self->_init_db;
+
     return $id
       if $id
       && $self->workers->find_one_and_update(
@@ -422,18 +419,6 @@ sub register_worker {
         }
       );
 
-    # indexes for jobs
-    $self->jobs->indexes->create_one(
-        Tie::IxHash->new( state => 1, delayed => 1, task => 1, queue => 1 ) );
-    $self->jobs->indexes->create_one( Tie::IxHash->new( finished => 1 ) );
-    $self->jobs->indexes->create_one(
-        Tie::IxHash->new( sequence => 1, next => 1 ) );
-    $self->jobs->indexes->create_one( Tie::IxHash->new( expires => 1 ) );
-
-    # indexes for locks
-    $self->locks->indexes->create_one( Tie::IxHash->new( name => 1 ),
-        { unique => 1 } );
-    $self->locks->indexes->create_one( Tie::IxHash->new( expires => 1 ) );
     my $res = $self->workers->insert_one(
         {
             host     => hostname,
@@ -444,6 +429,7 @@ sub register_worker {
             inbox    => [],
         }
     );
+
     return $res->inserted_id->hex;
 }
 
@@ -476,7 +462,7 @@ sub repair {
 
     # Old jobs with no unresolved dependencies and expired jobs
 
-    # find: select 1 from minion_jobs where parents @> ARRAY[j.id] and state != 'finished'
+# find: select 1 from minion_jobs where parents @> ARRAY[j.id] and state != 'finished'
     my $docs = $jobs->aggregate(
         [
             {
@@ -553,6 +539,7 @@ sub repair {
 
 sub reset {
     my ( $s, $options ) = ( shift, shift // {} );
+    $s->_init_db;
     if ( $options->{all} ) {
         $_->drop for $s->workers, $s->jobs, $s->locks;
     }
@@ -690,10 +677,13 @@ sub _enqueue {
     @{ $options->{parents} } = map $self->_oid($_), @{ $options->{parents} }
       if ( exists $options->{parents} );
 
+    my $now = DateTime->now();
     my $doc = {
-        args     => $args,
-        created  => DateTime->from_epoch( epoch => time ),
-        delayed  => DateTime->now()->add( seconds => $options->{delay} // 0 ),
+        args    => $args,
+        created => $now,
+        delayed => $options->{delay}
+        ? $now->clone->add( seconds => $options->{delay} )
+        : $now,
         priority => $options->{priority} // 0,
         state    => 'inactive',
         task     => $task,
@@ -703,7 +693,7 @@ sub _enqueue {
         parents  => $options->{parents} || [],
         queue    => $options->{queue} // 'default',
         sequence => $options->{sequence},
-        expires  => $options->{expire} ? DateTime->now()->add(
+        expires  => $options->{expire} ? $now->clone->add(
             seconds => $options->{expire}
         ) : undef,
         lax => $options->{lax} ? 1 : 0,
@@ -712,6 +702,26 @@ sub _enqueue {
     my $res = $self->jobs->insert_one($doc);
     my $id  = $res->inserted_id;
     return $id;
+}
+
+sub _init_db {
+    my $s = shift;
+
+    # indexes for jobs
+    $s->jobs->indexes->create_one(
+        Tie::IxHash->new( state => 1, delayed => 1, task => 1, queue => 1 ) );
+    $s->jobs->indexes->create_one( Tie::IxHash->new( finished => 1 ) );
+    $s->jobs->indexes->create_one(
+        Tie::IxHash->new( sequence => 1, next => 1 ) );
+    $s->jobs->indexes->create_one( Tie::IxHash->new( expires => 1 ) );
+
+    # indexes for locks
+    $s->locks->indexes->create_one( Tie::IxHash->new( name => 1 ),
+        { unique => 1 } );
+    $s->locks->indexes->create_one( Tie::IxHash->new( expires => 1 ) );
+
+    # Capped collection for notifications
+    $s->_notifications;
 }
 
 sub _job_info {
@@ -796,8 +806,8 @@ sub _notifications {
     $self->mongodb->run_command(
         [
             create => $notifications->name,
-            capped => 1,
-            size   => 1048576,
+            capped => true,
+            size   => 10240,
             max    => 128
         ]
     );
