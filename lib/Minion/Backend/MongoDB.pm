@@ -987,6 +987,22 @@ sub _worker_info {
 
 =encoding UTF-8
 
+=begin :badge
+
+=begin html
+
+<p>
+    <a href="https://github.com/avkhozov/Minion-Backend-MongoDB/actions/workflows/test.yml">
+        <img alt="github workflow tests" src="https://github.com/avkhozov/Minion-Backend-MongoDB/actions/workflows/test.yml/badge.svg">
+    </a>
+    <img alt="Top language: " src="https://img.shields.io/github/languages/top/avkhozov/Minion-Backend-MongoDB">
+    <img alt="github last commit" src="https://img.shields.io/github/last-commit/avkhozov/Minion-Backend-MongoDB">
+</p>
+
+=end html
+
+=end :badge
+
 =head1 SYNOPSIS
 
   use Minion::Backend::MongoDB;
