@@ -54,9 +54,7 @@ jobs:
                 name: build-share
 
             - name: Start MongoDB
-              uses: supercharge/mongodb-github-action@docker-network
-              with:
-                  mongodb-version: ${{ matrix.mongodb-version }}
+              run: sudo docker run -d -p 27017:27017 mongo:${{ matrix.mongodb-version }}
 
             - name: Create test folder
               run: mkdir module
