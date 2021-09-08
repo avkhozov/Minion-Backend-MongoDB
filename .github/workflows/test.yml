@@ -54,7 +54,7 @@ jobs:
                 name: build-share
 
             - name: Start MongoDB
-              uses: docker://mongo:${{ matrix.mongodb-version }}
+              uses: docker://mongo:4.0
 
             - name: Create test folder
               run: mkdir module
