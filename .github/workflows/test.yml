@@ -52,7 +52,7 @@ jobs:
               id: build_mongo_docker
               uses: DigiPie/mongo-action@v1.0.1
               with:
-                  image-version: ${{ matrix.mongodb-version }}
+                  image-version: 4.0
                   port: 27017
             - name: Download module from previous job
               uses: actions/download-artifact@v2
