@@ -48,12 +48,11 @@ jobs:
 
         # Steps represent a sequence of tasks that will be executed as part of the job
         steps:
-            - name: Create mongo Docker container
-              id: build_mongo_docker
-              uses: DigiPie/mongo-action@v1.0.1
+            - name: Launch MongoDB
+              uses: wbari/start-mongoDB@v0.2
               with:
-                  image-version: 4.0
-                  port: 27017
+                mongoDBVersion: ${{ matrix.mongodb-version }}
+                
             - name: Download module from previous job
               uses: actions/download-artifact@v2
               with:
