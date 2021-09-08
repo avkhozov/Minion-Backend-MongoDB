@@ -4,9 +4,17 @@
 
 Minion::Backend::MongoDB - MongoDB backend for Minion
 
+=for html <p>
+    <a href="https://github.com/avkhozov/Minion-Backend-MongoDB/actions/workflows/test.yml">
+        <img alt="github workflow tests" src="https://github.com/avkhozov/Minion-Backend-MongoDB/actions/workflows/test.yml/badge.svg">
+    </a>
+    <img alt="Top language: " src="https://img.shields.io/github/languages/top/avkhozov/Minion-Backend-MongoDB">
+    <img alt="github last commit" src="https://img.shields.io/github/last-commit/avkhozov/Minion-Backend-MongoDB">
+</p>
+
 =head1 VERSION
 
-version 1.07
+version 1.09
 
 =head1 SYNOPSIS
 
@@ -17,8 +25,8 @@ version 1.07
 =head1 DESCRIPTION
 
 This is a L<MongoDB> backend for L<Minion> derived from
-L<MongoDB::Minion::Pg> and supports for all its features.
-L<Mojolicious> 9.0 compatibility and synced with L<MongoDB::Minion::Pg> v.10.22
+L<Minion::Backend::Pg> and supports for all its features.
+L<Mojolicious> 9.0 compatibility and synced with L<Minion::Backend::Pg> v.10.22
 features.
 
 =encoding UTF-8
