@@ -44,15 +44,16 @@ jobs:
             mongodb-version: ['4.0']
 
         container:
-          image: perl:${{ matrix.perl-version }}
+          image: perl:${{ matrix.perl-version }}          
+          
+        services:
+            mongodb:
+                image: mongo:${{ matrix.mongodb-version }}
+                ports:
+                    - 27017:27017
 
         # Steps represent a sequence of tasks that will be executed as part of the job
-        steps:
-            - name: Launch MongoDB
-              uses: wbari/start-mongoDB@v0.2
-              with:
-                mongoDBVersion: ${{ matrix.mongodb-version }}
-                
+        steps:                
             - name: Download module from previous job
               uses: actions/download-artifact@v2
               with:
