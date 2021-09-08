@@ -505,7 +505,7 @@ sub repair {
     my @ids_to_delete;
     while ( my $doc = $docs->next ) {
         push @ids_to_delete, $doc->{_id}
-          unless ( scalar( $doc->{parents}->@* ) );
+          unless ( scalar( @{$doc->{parents}} ) );
     }
     $jobs->delete_many( { _id => { '$in' => \@ids_to_delete } } );
 
