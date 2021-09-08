@@ -331,6 +331,15 @@ sub lock {
     return $s->_lock( $name, $duration, $options->{limit} || 1 );
 }
 
+sub minion {
+    my $s      = shift;
+    my $minion = shift;
+    return $s->{minion} unless $minion;
+    $s->{minion} = $minion;
+    $s->_reconnect_db;
+    return $s;
+}
+
 sub new {
     my ( $class, $url ) = ( shift, shift );
     my $client = MongoDB->connect( $url, @_ );
@@ -813,6 +822,23 @@ sub _notifications {
 
 sub _oid {
     return defined $_[1] ? BSON::OID->new( oid => pack( "H*", $_[1] ) ) : undef;
+}
+
+sub _reconnect_db {
+    my $s = shift;
+    $s->minion->on(
+        worker => sub {
+            $_[1]->on(
+                dequeue => sub {
+                    $_[1]->on(
+                        start => sub {
+                            $s->minion->backend->mongodb->client->reconnect();
+                        }
+                    );
+                }
+            );
+        }
+    );
 }
 
 sub _total {

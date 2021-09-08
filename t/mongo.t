@@ -20,8 +20,6 @@ my $workers = $minion->backend->workers;
 is $jobs->name, 'jobs_test.jobs', 'right name';
 $minion->reset( { all => 1 } );
 
-# da rimuovere
-
 subtest 'Nothing to repair' => sub {
     my $worker = $minion->repair->worker;
     isa_ok $worker->minion->app, 'Mojolicious', 'has default application';
