@@ -48,15 +48,15 @@ jobs:
 
         # Steps represent a sequence of tasks that will be executed as part of the job
         steps:
-            - name: Start MongoDB
-              uses: supercharge/mongodb-github-action@1.6.0
-              with:
-                  mongodb-version: ${{ matrix.mongodb-version }}
-
             - name: Download module from previous job
               uses: actions/download-artifact@v2
               with:
                 name: build-share
+
+            - name: Start MongoDB
+              uses: supercharge/mongodb-github-action@1.6.0
+              with:
+                  mongodb-version: ${{ matrix.mongodb-version }}
 
             - name: Create test folder
               run: mkdir module
