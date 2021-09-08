@@ -54,7 +54,7 @@ jobs:
                 name: build-share
 
             - name: Start MongoDB
-              uses: supercharge/mongodb-github-action@1.6.0
+              uses: supercharge/mongodb-github-action@docker-network
               with:
                   mongodb-version: ${{ matrix.mongodb-version }}
 
