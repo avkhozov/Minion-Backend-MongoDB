@@ -77,3 +77,5 @@ jobs:
             - name: Test module
               working-directory: ./module
               run: make test
+              env:
+                  TEST_ONLINE: mongodb://127.0.0.1:27017/minion
