@@ -47,17 +47,15 @@ sub dequeue {
     my ( $self, $id, $wait, $options ) = @_;
 
     if ( ( my $job = $self->_try( $id, $options ) ) ) { return $job }
-    my $l = Mojo::IOLoop->singleton;
-    return undef if $l->is_running;
+    return undef if Mojo::IOLoop->is_running;
 
-
-    my $timer = $l->timer( $wait => sub { $l->stop } );
+    my $timer = Mojo::IOLoop->timer( $wait => sub { Mojo::IOLoop->stop } );
     Mojo::Promise->new->resolve->then(
         sub() {
-            $l->stop if ( $self->_await );
+            Mojo::IOLoop->stop if ( $self->_await );
         }
     )->wait;
-    $l->remove($timer);
+    Mojo::IOLoop->remove($timer);
 
     return $self->_try( $id, $options );
 
@@ -344,7 +342,6 @@ sub new {
             $self->mongodb->client->reconnect();
         }
     );
-
     return $self;
 }
 
@@ -840,7 +837,8 @@ sub _try {
     $match->Push( 'priority' => { '$gte' => $options->{min_priority} } )
       if exists $options->{min_priority};
 
-    my $docs = $self->jobs->find($match)->sort( { priority => -1, id => 1 } );
+    my $docs =
+      $self->jobs->find( $match, { sort => [ 'priority', -1, '_id', 1 ] } );
 
     my $find = 0;
     my $doc_matched;
