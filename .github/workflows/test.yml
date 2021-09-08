@@ -79,4 +79,4 @@ jobs:
               working-directory: ./module
               run: make test
               env:
-                  TEST_ONLINE: mongodb://localhost/test
+                  TEST_ONLINE: mongodb://mongodb/test
