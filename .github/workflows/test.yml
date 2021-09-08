@@ -1,0 +1,79 @@
+# Workflow perl modules build with Dist::Zilla
+
+name: Test Module
+
+# Controls when the workflow will run
+on:
+    # Triggers the workflow on release:created
+    release:
+        types: [created]
+
+    # Allows you to run this workflow manually from the Actions tab
+    workflow_dispatch:
+
+jobs:
+    # fetch and build module
+    Fetch-and-build:
+        runs-on: ubuntu-latest
+        container: ebruni/devel:dzil
+        steps:
+            - name: Checkout Repo Action
+              uses: actions/checkout@v2
+
+            - name: Fix ExtUtils::MakeMaker (for Perl 5.16 and 5.18)
+              run: cpanm -n App::cpanminus ExtUtils::MakeMaker
+
+            - name: Install missing Dist::Zilla plugins
+              run: dzil authordeps --missing | cpanm -n
+
+            - name: Build module
+              run: dzil build
+
+            - name: "Share builded module"
+              uses: actions/upload-artifact@v2
+              with:
+                name: build-share
+                path: ./*.tar.gz
+    test:
+        needs: Fetch-and-build
+        # The type of runner that the job will run on
+        runs-on: ubuntu-latest
+        strategy:
+          matrix:
+            perl-version: ['5.16']
+            mongodb-version: ['4.0']
+
+        container:
+          image: perl:${{ matrix.perl-version }}
+
+        # Steps represent a sequence of tasks that will be executed as part of the job
+        steps:
+            - name: Start MongoDB
+              uses: supercharge/mongodb-github-action@1.6.0
+              with:
+                  mongodb-version: ${{ matrix.mongodb-version }}
+
+            - name: Download module from previous job
+              uses: actions/download-artifact@v2
+              with:
+                name: build-share
+
+            - name: Create test folder
+              run: mkdir module
+
+            - name: Uncompress module
+              run: tar zxvf *.gz -C module --strip-components=1
+
+            - name: Install dependences
+              working-directory: ./module
+              run: cpanm --installdeps -n .
+
+            - name: Make module
+              working-directory: ./module
+              run: |
+                perl Makefile.PL
+                make
+
+            - name: Test module
+              working-directory: ./module
+              run: make test
