@@ -1,0 +1,53 @@
+% use MetaCPAN::Client;
+% my $mcpan  = MetaCPAN::Client->new();
+%= $warning
+
+% my $Title = ucfirst($global->{title});
+
+# What is <%= $Title %>?
+
+%= $Title . " is a " . $global->{description}
+
+All images, unless explicitly defined, are based on [<%= $from %>](https://hub.docker.com/repository/docker/<%= $from=~s/:(.*?)$//r %>) and provide installed together with these Perl modules:
+
+%= join(",\n", map {"* [$_](https://metacpan.org/pod/$_) v" . $mcpan->module($_)->version} $global->{perl_modules}->@*) . '.'
+
+# Supported tags and respective Dockerfile links
+
+% my $cmd = sub {return 'docker image ls --format "{{.Size}}" --filter "label=org.opencontainers.image.version=' . $global->{versions}->[0] . '" ' . $docker->{image} . ':' . shift};
+% my $cmde = $cmd->('latest');
+* <%= $global->{title} %>: <%= $main->{dockerfile}->{link} %> (size: **<%= qx[$cmde] =~ s/\n$//r %>**)
+% $cmd = sub {my $tag = shift; return 'docker image ls --format "{{.Size}}" --filter "label=org.opencontainers.image.version=' . $global->{versions}->[0] . '-' . $tag . '" ' . $docker->{image} . ":$tag"};
+
+% for (grep !/main/, keys $releases->%*) {
+% $cmde = $cmd->($_);
+* <%= $global->{title} %>: <%= $releases->{$_}->{dockerfile}->{link} %> (size: **<%= qx[$cmde] =~ s/\n$//r %>**) \
+% if($releases->{$_}->{from}) {
+based on [<%= $releases->{$_}->{from} %>](https://hub.docker.com/repository/docker/<%= $releases->{$_}->{from}=~s/:(.*?)$//r %>) \
+% }
+% if($releases->{$_}->{perl_modules}) {
+with these additional Perl modules
+
+%= join(",\n", map {"\t* [$_](https://metacpan.org/pod/$_) v" . $mcpan->module($_)->version} $releases->{$_}->{perl_modules}->@*) . '.'
+% }  # if
+% } # for
+
+# How to use this image
+
+    $ docker container run --rm -ti ebruni/minion-backend-mongodb /bin/ash
+
+# Authors
+
+<%= $global->{author}->{name} . ' (' . $global->{author}->{abbr} . ') <' . $global->{author}->{mail} . '>' %>
+
+# Changes
+
+| AUTHOR | DATE | VER. | COMMENTS |
+|:---|:---:|:---:|:---|
+% for ($docker->{history}->@*) {
+| <%= $global->{author}->{abbr} %> | <%= $_->{date} %> | <%= $_->{version} %> | <%= $_->{comment} %> |
+% }
+
+# Source
+
+The source of this image on [GitHub](<%= $git->{repo} %>).
