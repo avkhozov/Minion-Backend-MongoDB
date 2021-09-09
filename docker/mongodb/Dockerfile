@@ -47,11 +47,11 @@ ARG NOW=not-set
 LABEL org.opencontainers.image.authors="Emiliano Bruni <info@ebruni.it>"
 LABEL org.opencontainers.image.created=$NOW
 LABEL org.opencontainers.image.description="backend for Minion, a high performance job queue in Perl, derived from Minion::Backend::Pg with supports for all its features ."
-LABEL org.opencontainers.image.documentation=https://github.com/EmilianoBruni/Minion-Backend-MongoDB/blob/master/README.pod
+LABEL org.opencontainers.image.documentation=https://github.com/avkhozov/Minion-Backend-MongoDB/blob/master/README.pod
 LABEL org.opencontainers.image.licenses=Artistic-2.0
-LABEL org.opencontainers.image.source=https://github.com/EmilianoBruni/Minion-Backend-MongoDB/blob/master/mongodb/Dockerfile
+LABEL org.opencontainers.image.source=https://github.com/avkhozov/Minion-Backend-MongoDB/blob/master/mongodb/Dockerfile
 LABEL org.opencontainers.image.title=Minion::Backend::MongoDB
-LABEL org.opencontainers.image.url=https://github.com/EmilianoBruni/Minion-Backend-MongoDB
+LABEL org.opencontainers.image.url=https://github.com/avkhozov/Minion-Backend-MongoDB
 LABEL org.opencontainers.image.version=1.0-mongodb
 
 CMD ["/bin/bash", "-c"]

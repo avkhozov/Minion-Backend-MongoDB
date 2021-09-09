@@ -11,9 +11,9 @@ All images, unless explicitly defined, are based on [ebruni/mojolicious:minion](
 
 # Supported tags and respective Dockerfile links
 
-* Minion::Backend::MongoDB: [1.0, latest (main/Dockerfile)](https://github.com/EmilianoBruni/Minion-Backend-MongoDB/blob/master/main/Dockerfile) (size: **99.7MB**)
+* Minion::Backend::MongoDB: [1.0, latest (main/Dockerfile)](https://github.com/avkhozov/Minion-Backend-MongoDB/blob/master/main/Dockerfile) (size: **99.7MB**)
 
-* Minion::Backend::MongoDB: [1.0-mongodb, mongodb (mongodb/Dockerfile)](https://github.com/EmilianoBruni/Minion-Backend-MongoDB/blob/master/mongodb/Dockerfile) (size: **99.7MB**) based on [ebruni/mojolicious:minion-mongodb](https://hub.docker.com/repository/docker/ebruni/mojolicious) 
+* Minion::Backend::MongoDB: [1.0-mongodb, mongodb (mongodb/Dockerfile)](https://github.com/avkhozov/Minion-Backend-MongoDB/blob/master/mongodb/Dockerfile) (size: **99.7MB**) based on [ebruni/mojolicious:minion-mongodb](https://hub.docker.com/repository/docker/ebruni/mojolicious) 
 # How to use this image
 
     $ docker container run --rm -ti ebruni/minion-backend-mongodb /bin/ash
@@ -30,4 +30,4 @@ Emiliano Bruni (EB) <info@ebruni.it>
 
 # Source
 
-The source of this image on [GitHub](https://github.com/EmilianoBruni/Minion-Backend-MongoDB).
+The source of this image on [GitHub](https://github.com/avkhozov/Minion-Backend-MongoDB).
