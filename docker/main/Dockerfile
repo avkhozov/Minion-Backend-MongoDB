@@ -1,7 +1,7 @@
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 #
 # AUTHORS :  Emiliano Bruni (EB) <info@ebruni.it>
-# DATE    :  2021-09-09
+# DATE    :  2021-09-24
 # PURPOSE :
 #   Backend for Minion, a high performance job queue in [Perl](https://www.perl.org), derived from [Minion::Backend::Pg](https://metacpan.org/pod/Minion::Backend::Pg) with supports for all its features .
 #
@@ -12,6 +12,7 @@
 #
 # UPDATES:
 #   AUTHOR  DATE        VER  COMMENTS
+#   EB      2021-09-24  1.1  Update backend to v.1.10
 #   EB      2021-09-09  1.0  Initial Version
 #
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -52,6 +53,6 @@ LABEL org.opencontainers.image.licenses=Artistic-2.0
 LABEL org.opencontainers.image.source=https://github.com/avkhozov/Minion-Backend-MongoDB/blob/master/main/Dockerfile
 LABEL org.opencontainers.image.title=Minion::Backend::MongoDB
 LABEL org.opencontainers.image.url=https://github.com/avkhozov/Minion-Backend-MongoDB
-LABEL org.opencontainers.image.version=1.0
+LABEL org.opencontainers.image.version=1.1
 
 CMD ["/bin/bash", "-c"]
