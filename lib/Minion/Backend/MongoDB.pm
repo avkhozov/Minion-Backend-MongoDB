@@ -28,6 +28,9 @@ has workers => sub { $_[0]->mongodb->coll( $_[0]->prefix . '.workers' ) };
 has locks   => sub { $_[0]->mongodb->coll( $_[0]->prefix . '.locks' ) };
 has admin   => sub { $_[0]->dbclient->db('admin') };
 
+# Friday 31 December 9999 23:59:59
+has never => sub { DateTime->from_epoch( epoch => 253402300799 ) };
+
 sub broadcast {
     my ( $s, $command, $args, $ids ) =
       ( shift, shift, shift || [], shift || [] );
@@ -163,7 +166,6 @@ sub list_jobs {
     }
     $imatch->{'$or'} = [
         { state   => { '$ne' => 'inactive' } },
-        { expires => undef },
         { expires => { '$gt' => DateTime->now } }
     ];
 
@@ -529,7 +531,6 @@ sub repair {
 
 sub reset {
     my ( $s, $options ) = ( shift, shift // {} );
-    $s->_init_db;
     if ( $options->{all} ) {
         $_->drop for $s->workers, $s->jobs, $s->locks;
     }
@@ -539,6 +540,7 @@ sub reset {
     else {
         warn "Starting to v10.0 you must explicit what you want to reset";
     }
+    $s->_init_db;
 }
 
 sub retry_job {
@@ -590,10 +592,7 @@ sub stats {
     $stats->{inactive_jobs} = $jobs->count_documents(
         {
             state => 'inactive',
-            '$or' => [
-                { expires => undef },
-                { expires => { '$gt' => DateTime->now } },
-            ]
+            expires => { '$gt' => DateTime->now }
         }
     );
     $stats->{"${_}_jobs"} = $jobs->count_documents( { state => $_ } )
@@ -644,20 +643,16 @@ sub worker_info {
 }
 
 sub _await {
-    my $self = shift;
+    my $s    = shift;
     my $wait = shift || 0.5;
-    $wait *= 1000;
-    my $last =
-      $self->notifications->find_one( {}, {}, { sort => { _id => -1 } } )
-      ->{_id};
-    my $cursor = $self->notifications->find(
+
+    my $last   = BSON::OID->new;
+    my $cursor = $s->notifications->find(
         {
-            _id   => { '$gt' => $last },
-            '$or' => [ { c => 'created' }, { c => 'update_retries' } ]
+            _id => { '$gt' => $last },
         }
-    )->tailable_await(1)->max_await_time_ms($wait);
-    return undef unless my $doc = $cursor->has_next;
-    return 1;
+    )->tailable_await(1)->max_await_time_ms( $wait * 1000 );
+    $cursor->has_next;
 }
 
 sub _dtkey {
@@ -687,7 +682,7 @@ sub _enqueue {
         sequence => $options->{sequence},
         expires  => $options->{expire} ? $now->clone->add(
             seconds => $options->{expire}
-        ) : undef,
+        ) : $self->never,
         lax => $options->{lax} ? 1 : 0,
     };
 
@@ -700,12 +695,23 @@ sub _init_db {
     my $s = shift;
 
     # indexes for jobs
-    $s->jobs->indexes->create_one(
-        Tie::IxHash->new( state => 1, delayed => 1, task => 1, queue => 1 ) );
+
     $s->jobs->indexes->create_one( Tie::IxHash->new( finished => 1 ) );
+
+    # for _try main query
+    $s->jobs->indexes->create_one(
+        Tie::IxHash->new(
+            state    => 1,
+            priority => -1,
+            _id      => 1,
+            delayed  => 1,
+            expires  => -1,
+            task     => 1,
+            queue    => 1
+        )
+    );
     $s->jobs->indexes->create_one(
         Tie::IxHash->new( sequence => 1, next => 1 ) );
-    $s->jobs->indexes->create_one( Tie::IxHash->new( expires => 1 ) );
 
     # indexes for locks
     $s->locks->indexes->create_one( Tie::IxHash->new( name => 1 ),
@@ -842,7 +848,7 @@ sub _try {
         state   => 'inactive',
         task    => { '$in' => [ keys %{ $self->minion->tasks } ] },
         queue   => { '$in' => $options->{queues} // ['default'] },
-        '$or'   => [ { expires => undef }, { expires => { '$gt' => $now } } ],
+        expires => { '$gt' => $now },
     );
     $match->Push( '_id' => $self->_oid( $options->{id} ) )
       if defined $options->{id};
