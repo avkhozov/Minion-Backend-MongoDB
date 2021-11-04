@@ -639,10 +639,6 @@ sub _await {
     $cursor->has_next;
 }
 
-sub _dtkey {
-    return substr( $_[0]->datetime, 0, -6 );
-}
-
 sub _enqueue {
     my ( $self, $task, $args, $options ) = @_;
     @{ $options->{parents} } = map $self->_oid($_), @{ $options->{parents} }
