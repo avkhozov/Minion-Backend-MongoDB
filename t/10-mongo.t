@@ -162,8 +162,8 @@ subtest 'Repair old jobs' => sub {
         { _id => $minion->backend->_oid($id2) },
         {
             '$set' => {
-                'finished' => $finished->as_datetime->add(
-                    seconds => -$minion->remove_after - 1
+                'finished' => $finished->as_time_moment->plus_seconds(
+                    -$minion->remove_after - 1
                 )
             }
         }
@@ -175,8 +175,8 @@ subtest 'Repair old jobs' => sub {
         { _id => $minion->backend->_oid($id3) },
         {
             '$set' => {
-                'finished' => $finished->as_datetime->add(
-                    seconds => -$minion->remove_after - 1
+                'finished' => $finished->as_time_moment->plus_seconds(
+                    -$minion->remove_after - 1
                 )
             }
         }
