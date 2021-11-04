@@ -11,6 +11,7 @@ use Mojo::IOLoop;
 use Mojo::Promise;
 use Sys::Hostname 'hostname';
 use Time::HiRes 'usleep';
+use Time::Moment;
 
 # Isolate tests
 my $minion = Minion->new( MongoDB => $ENV{TEST_ONLINE} );
@@ -118,7 +119,7 @@ subtest 'Repair missing worker' => sub {
         {
             '$set' => {
                 notified =>
-                  DateTime->now->add( seconds => -$minion->missing_after - 1 )
+                  Time::Moment->now->plus_seconds(-$minion->missing_after - 1 )
             }
         }
     );
@@ -200,8 +201,8 @@ subtest 'Repair stuck jobs' => sub {
         { _id => $minion->backend->_oid($_) },
         {
             '$set' => {
-                'delayed' => DateTime->now->add(
-                    seconds => -$minion->stuck_after - 1
+                'delayed' => Time::Moment->now->plus_seconds(
+                    -$minion->stuck_after - 1
                 )
             }
         }
@@ -322,7 +323,7 @@ subtest 'List locks' => sub {
         { name => 'yada' },
         {
             '$set' => {
-                'expires.$[]' => DateTime->now->add( seconds => -1 )
+                'expires.$[]' => Time::Moment->now->minus_seconds( 1 )
             }
         }
     );
@@ -458,6 +459,7 @@ subtest 'History' => sub {
     ok defined $history->{daily}[-1]{epoch}, 'has epoch value';
     $job->remove;
 };
+
 
 # List jobs
 subtest 'List jobs' => sub {
@@ -688,7 +690,7 @@ subtest 'Delayed jobs' => sub {
         { _id => $minion->backend->_oid($id) },
         {
             '$set' => {
-                delayed => DateTime->now->add( seconds => -1 )
+                delayed => Time::Moment->now->minus_seconds(1 )
             }
         }
     );
@@ -953,7 +955,7 @@ subtest 'Multiple attempts while processing' => sub {
     ok $info->{retried} < $job->info->{delayed}, 'delayed timestamp';
     $minion->backend->jobs->update_one(
         { _id    => $minion->backend->_oid($id) },
-        { '$set' => { delayed => DateTime->now } }
+        { '$set' => { delayed => Time::Moment->now } }
     );
     ok $job = $worker->dequeue(0), 'job dequeued';
     is $job->id, $id, 'right id';
@@ -967,7 +969,7 @@ subtest 'Multiple attempts while processing' => sub {
     is $info->{state},    'inactive', 'right state';
     $minion->backend->jobs->update_one(
         { _id    => $minion->backend->_oid($id) },
-        { '$set' => { delayed => DateTime->now } }
+        { '$set' => { delayed => Time::Moment->now } }
     );
     ok $job = $worker->register->dequeue(0), 'job dequeued';
     is $job->id, $id, 'right id';
@@ -989,7 +991,7 @@ subtest 'Multiple attempts while processing' => sub {
     is $job->info->{state}, 'inactive', 'right state';
     $minion->backend->jobs->update_one(
         { _id    => $minion->backend->_oid($id) },
-        { '$set' => { delayed => DateTime->now } }
+        { '$set' => { delayed => Time::Moment->now } }
     );
     ok $job = $worker->register->dequeue(0), 'job dequeued';
     is $job->id, $id, 'right id';
@@ -1014,7 +1016,7 @@ subtest 'Multiple attempts during maintenance' => sub {
     ok $job->info->{retried} < $job->info->{delayed}, 'delayed timestamp';
     $minion->backend->jobs->update_one(
         { _id    => $minion->backend->_oid($id) },
-        { '$set' => { delayed => DateTime->now } }
+        { '$set' => { delayed => Time::Moment->now } }
     );
     ok $job = $worker->register->dequeue(0), 'job dequeued';
     is $job->id, $id, 'right id';
@@ -1267,7 +1269,7 @@ subtest 'Expiring jobs' => sub {
         { _id => $db->_oid($id) },
         {
             '$set' => {
-                'expires' => DateTime->now->subtract( days => 1 )
+                'expires' => Time::Moment->now->minus_days( 1 )
             }
         }
     );
@@ -1287,7 +1289,7 @@ subtest 'Expiring jobs' => sub {
         { _id => $db->_oid($id) },
         {
             '$set' => {
-                'expires' => DateTime->now->subtract( days => 1 )
+                'expires' => Time::Moment->now->minus_days( 1 )
             }
         }
     );
@@ -1303,7 +1305,7 @@ subtest 'Expiring jobs' => sub {
         { _id => $db->_oid($id) },
         {
             '$set' => {
-                'expires' => DateTime->now->subtract( days => 1 )
+                'expires' => Time::Moment->now->minus_days( 1 )
             }
         }
     );
@@ -1318,7 +1320,7 @@ subtest 'Expiring jobs' => sub {
         { _id => $db->_oid($id) },
         {
             '$set' => {
-                'expires' => DateTime->now->subtract( days => 1 )
+                'expires' => Time::Moment->now->minus_days( 1 )
             }
         }
     );
@@ -1334,7 +1336,7 @@ subtest 'Expiring jobs' => sub {
         { _id => $db->_oid($id) },
         {
             '$set' => {
-                'expires' => DateTime->now->subtract( days => 1 )
+                'expires' => Time::Moment->now->minus_days( 1 )
             }
         }
     );

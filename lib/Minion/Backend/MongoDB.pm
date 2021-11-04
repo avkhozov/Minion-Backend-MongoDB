@@ -9,9 +9,6 @@ use Mojo::Base 'Minion::Backend';
 use boolean;
 use BSON::OID;
 use BSON::Types qw(:all);
-use DateTime;
-use DateTime::Set;
-use DateTime::Span;
 use Mojo::URL;
 use MongoDB;
 use Sys::Hostname qw(hostname);
@@ -30,7 +27,7 @@ has locks   => sub { $_[0]->mongodb->coll( $_[0]->prefix . '.locks' ) };
 has admin   => sub { $_[0]->dbclient->db('admin') };
 
 # Friday 31 December 9999 23:59:59
-has never => sub { DateTime->from_epoch( epoch => 253402300799 ) };
+has never => sub { Time::Moment->from_epoch(253402300799) };
 
 sub broadcast {
     my ( $s, $command, $args, $ids ) =
@@ -83,18 +80,13 @@ sub finish_job { shift->_update( 0, @_ ) }
 sub history {
     my $self = shift;
 
-    my $dt_stop  = DateTime->now;
-    my $dt_start = $dt_stop->clone->add( days => -1 );
-    my $dt_span  = DateTime::Span->from_datetimes(
-        start => $dt_start,
-        end   => $dt_stop
-    );
-    my $dt_set = DateTime::Set->from_recurrence( recurrence =>
-          sub { return $_[0]->truncate( to => 'hour' )->add( hours => 1 ) } );
-    my @dt_set = $dt_set->as_list( span => $dt_span );
-    my %acc    = (
+    my $dt_stop = Time::Moment->now_utc;
+
+    my @dt_set   = reverse( map $dt_stop->minus_hours($_), ( 0 .. 23 ) );
+    my $dt_start = $dt_set[0];
+    my %acc      = (
         map {
-            &_dtkey($_) => {
+            $_->strftime('%Y%j%H') => {
                 epoch         => $_->epoch(),
                 failed_jobs   => 0,
                 finished_jobs => 0
@@ -134,17 +126,11 @@ sub history {
     my $cursor = $self->jobs->aggregate( [ $match, $group ] );
 
     while ( my $doc = $cursor->next ) {
-        my $dt_finished = DateTime->new(
-            year  => $doc->{_id}->{year},
-            month => 1,
-            day   => 1,
-            hour  => $doc->{_id}->{hour},
-        );
-        $dt_finished->add( days => $doc->{_id}->{day} - 1 );
-        my $key = &_dtkey($dt_finished);
+        my $id = $doc->{_id};
+        my $key =
+          sprintf( "%04d%03d%02d", $id->{year}, $id->{day}, $id->{hour} );
         $acc{$key}->{$_} += $doc->{$_} for (qw(finished_jobs failed_jobs));
     }
-
     return { daily => [ @acc{ ( sort keys(%acc) ) } ] };
 }
 
@@ -167,7 +153,7 @@ sub list_jobs {
     }
     $imatch->{'$or'} = [
         { state   => { '$ne' => 'inactive' } },
-        { expires => { '$gt' => DateTime->now } }
+        { expires => { '$gt' => Time::Moment->now } }
     ];
 
     my $match  = { '$match' => $imatch };
@@ -372,7 +358,7 @@ sub purge {
 
     my %match;
     $match{ $opts->{older_field} } =
-      { '$lt' => DateTime->now->add( seconds => -$opts->{older} ) };
+      { '$lt' => Time::Moment->now->minus_seconds( $opts->{older} ) };
     foreach (qw/queue state task/) {
         $match{$_} = { '$in' => $opts->{ $_ . 's' } }
           if ( $opts->{ $_ . 's' } );
@@ -400,13 +386,15 @@ sub register_worker {
 
     $self->_init_db;
 
+    my $now = Time::Moment->now;
+
     return $id
       if $id
       && $self->workers->find_one_and_update(
         { _id => $self->_oid($id) },
         {
             '$set' => {
-                notified => DateTime->from_epoch( epoch => time ),
+                notified => $now,
                 status   => $options->{status} // {}
             }
         }
@@ -416,8 +404,8 @@ sub register_worker {
         {
             host     => hostname,
             pid      => $$,
-            started  => DateTime->from_epoch( epoch => time ),
-            notified => DateTime->from_epoch( epoch => time ),
+            started  => $now,
+            notified => $now,
             status   => $options->{status} // {},
             inbox    => [],
         }
@@ -439,14 +427,13 @@ sub repair {
     my $self   = shift;
     my $minion = $self->minion;
 
-    my $now = DateTime->now;
+    my $now = Time::Moment->now;
 
     # Workers without heartbeat
     $self->workers->delete_many(
         {
             notified => {
-                '$lt' =>
-                  $now->clone->subtract( seconds => $minion->missing_after )
+                '$lt' => $now->minus_seconds( $minion->missing_after )
             }
         }
     );
@@ -462,9 +449,7 @@ sub repair {
                 '$match' => {
                     state    => 'finished',
                     finished => {
-                        '$lte' => $now->clone->subtract(
-                            seconds => $minion->remove_after
-                        )
+                        '$lte' => $now->minus_seconds( $minion->remove_after )
                     }
                 }
             },
@@ -518,8 +503,7 @@ sub repair {
         {
             state   => 'inactive',
             delayed => {
-                '$lt' =>
-                  $now->clone->subtract( seconds => $minion->stuck_after )
+                '$lt' => $now->minus_seconds( $minion->stuck_after )
             },
         },
         {
@@ -549,7 +533,7 @@ sub retry_job {
       ( shift, shift, shift, shift || {} );
     $options->{delay} //= 0;
 
-    my $dt_now = DateTime->now();
+    my $dt_now = Time::Moment->now();
 
     my $query  = { _id => $self->_oid($id), retries => $retries };
     my $update = {
@@ -557,12 +541,11 @@ sub retry_job {
         '$set' => {
             retried => $dt_now,
             state   => 'inactive',
-            delayed => $dt_now->clone->add( seconds => $options->{delay} || 0 ),
+            delayed => $dt_now->plus_seconds( $options->{delay} || 0 ),
         },
     };
 
-    $update->{'$set'}->{expires} =
-      $dt_now->clone->add( seconds => $options->{expire} )
+    $update->{'$set'}->{expires} = $dt_now->plus_seconds( $options->{expire} )
       if exists $options->{expire};
 
     foreach (qw(attempts parents priority queue lax)) {
@@ -593,7 +576,7 @@ sub stats {
     $stats->{inactive_jobs} = $jobs->count_documents(
         {
             state   => 'inactive',
-            expires => { '$gt' => DateTime->now }
+            expires => { '$gt' => Time::Moment->now }
         }
     );
     $stats->{"${_}_jobs"} = $jobs->count_documents( { state => $_ } )
@@ -665,12 +648,11 @@ sub _enqueue {
     @{ $options->{parents} } = map $self->_oid($_), @{ $options->{parents} }
       if ( exists $options->{parents} );
 
-    my $now = DateTime->now();
+    my $now = Time::Moment->now();
     my $doc = {
         args    => $args,
         created => $now,
-        delayed => $options->{delay}
-        ? $now->clone->add( seconds => $options->{delay} )
+        delayed => $options->{delay} ? $now->plus_seconds( $options->{delay} )
         : $now,
         priority => $options->{priority} // 0,
         state    => 'inactive',
@@ -681,9 +663,8 @@ sub _enqueue {
         parents  => $options->{parents} || [],
         queue    => $options->{queue} // 'default',
         sequence => $options->{sequence},
-        expires  => $options->{expire} ? $now->clone->add(
-            seconds => $options->{expire}
-        ) : $self->never,
+        expires => $options->{expire} ? $now->plus_seconds( $options->{expire} )
+        : $self->never,
         lax => $options->{lax} ? 1 : 0,
     };
 
@@ -731,7 +712,7 @@ sub _job_info {
     $job->{id} = $job->{_id}->hex;
     $job->{retries} //= 0;
     $job->{children} = [ map $_->{_id}->hex, @{ $job->{children} } ];
-    $job->{time}     = DateTime->now->epoch;    # server time
+    $job->{time}     = Time::Moment->now->epoch;    # server time
 
     return $job;
 }
@@ -739,8 +720,8 @@ sub _job_info {
 sub _lock {
     my ( $s, $name, $duration, $count ) = @_;
 
-    my $dt_now = DateTime->now;
-    my $dt_exp = $dt_now->clone->add( seconds => $duration );
+    my $dt_now = Time::Moment->now;
+    my $dt_exp = $dt_now->plus_seconds($duration);
 
     my $match = { name => $name };
 
@@ -928,7 +909,7 @@ sub _update {
     my ( $self, $fail, $id, $retries, $result ) = @_;
 
     my $update = {
-        finished => DateTime->now,
+        finished => Time::Moment->now,
         state    => $fail ? 'failed'     : 'finished',
         result   => $fail ? $result . '' : $result,
     };
