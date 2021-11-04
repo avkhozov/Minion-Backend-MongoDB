@@ -17,6 +17,7 @@ use MongoDB;
 use Sys::Hostname qw(hostname);
 use Tie::IxHash;
 use Time::HiRes qw(time);
+use Time::Moment;
 
 has 'dbclient';
 has 'mongodb';
@@ -591,7 +592,7 @@ sub stats {
       { active_workers => $active, inactive_workers => $all - $active };
     $stats->{inactive_jobs} = $jobs->count_documents(
         {
-            state => 'inactive',
+            state   => 'inactive',
             expires => { '$gt' => DateTime->now }
         }
     );
@@ -841,8 +842,9 @@ sub _total {
 sub _try {
     my ( $self, $id, $options ) = @_;
 
-    my $now = DateTime->now;
+    my $now = Time::Moment->now;
 
+    # find documents inactive
     my $match = Tie::IxHash->new(
         delayed => { '$lte' => $now },
         state   => 'inactive',
@@ -858,59 +860,16 @@ sub _try {
     my $docs =
       $self->jobs->find( $match, { sort => [ 'priority', -1, '_id', 1 ] } );
 
+    # find a document inactive with no problems with parents and set as active
     my $find = 0;
     my $doc_matched;
-    while ( ( my $doc = $docs->next ) && !$find ) {
+    my $job;
 
-        $find =
-
-          # parents = '{}'
-          !scalar @{ $doc->{parents} } ||
-
-          # not exist ... where
-          !$self->jobs->count_documents(
-            {
-                '$and' => [
-                    { _id => { '$in' => $doc->{parents} } }
-                    ,    # (id = any parents) and
-                    {
-                        '$or' => [
-                            { state => 'active' },
-                            {
-                                '$and' => [
-                                    { state => 'failed' },
-                                    { _id => { '$exists' => !$doc->{lax} }
-                                    }    # a bad way to say "not doc.lax"
-                                ]
-                            },
-                            {
-                                '$and' => [
-                                    { state => 'inactive' },
-                                    {
-                                        '$or' => [
-                                            { expires => undef },
-                                            {
-                                                expires =>
-                                                  { '$gt' => DateTime->now }
-                                            }
-                                        ]
-                                    },
-                                ]
-                            },
-                        ]
-                    },
-                ]
-            }
-          );
-        $doc_matched = $doc if $find;
-    }
-    return undef unless $doc_matched;
-
-    my $doc = [
-        { _id => $doc_matched->{_id}, state => 'inactive' },
+    my $make_job_active = [
+        { _id => 'template', state => 'inactive' },
         {
             '$set' => {
-                started => DateTime->from_epoch( epoch => time ),
+                started => $now,
                 state   => 'active',
                 worker  => $self->_oid($id)
             }
@@ -921,9 +880,46 @@ sub _try {
             returnDocument => 'after',
         }
     ];
+    while ( ( my $doc = $docs->next ) && !defined $job ) {
+        $make_job_active->[0]->{_id} = $doc->{_id};
 
-    my $job = $self->jobs->find_one_and_update(@$doc);
-    return undef unless ( $job->{_id} );
+        # try if doc has no parent and is still inactive or not exist... where
+        (
+            # parents = '{}'
+            !scalar @{ $doc->{parents} } ||
+
+              # not exist ... where
+              !$self->jobs->count_documents(
+                {
+                    '$and' => [
+                        { _id => { '$in' => $doc->{parents} } }
+                        ,    # (id = any parents) and
+                        {
+                            '$or' => [
+                                { state => 'active' },
+                                {
+                                    '$and' => [
+                                        { state => 'failed' },
+                                        {
+                                            _id => { '$exists' => !$doc->{lax} }
+                                        }    # a bad way to say "not doc.lax"
+                                    ]
+                                },
+                                {
+                                    '$and' => [
+                                        { state   => 'inactive' },
+                                        { expires => { '$gt' => $now } },
+                                    ]
+                                },
+                            ]
+                        }
+                    ]
+                }
+              )
+        ) && ( $job = $self->jobs->find_one_and_update(@$make_job_active) );
+
+    }
+    return undef unless ( $job || $job->{_id} );
     $job->{id} = $job->{_id}->hex;
     return $job;
 }
@@ -949,7 +945,9 @@ sub _update {
     # return 1 if !$fail || (my $attempts = $doc->{attempts}) == 1;
     # return 1 if $retries >= ($attempts - 1);
     # my $delay = $self->minion->backoff->($retries);
-    return $fail ? $self->auto_retry_job( $id, $retries, $doc->{attempts} ) : 1;
+    return $fail
+      ? $self->auto_retry_job( $id, $retries, $doc->{attempts} )
+      : 1;
 }
 
 sub _worker_info {
