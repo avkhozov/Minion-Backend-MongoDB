@@ -7,7 +7,7 @@ Minion::Backend::MongoDB is a backend for Minion, a high performance job queue i
 
 All images, unless explicitly defined, are based on [ebruni/mojolicious:minion](https://hub.docker.com/repository/docker/ebruni/mojolicious) and provide installed together with these Perl modules:
 
-* [Minion::Backend::MongoDB](https://metacpan.org/pod/Minion::Backend::MongoDB) v1.12.
+* [Minion::Backend::MongoDB](https://metacpan.org/pod/Minion::Backend::MongoDB) v1.13.
 
 # Supported tags and respective Dockerfile links
 
