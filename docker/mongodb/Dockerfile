@@ -1,7 +1,7 @@
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 #
 # AUTHORS :  Emiliano Bruni (EB) <info@ebruni.it>
-# DATE    :  2022-01-17
+# DATE    :  2022-02-24
 # PURPOSE :
 #   Backend for Minion, a high performance job queue in [Perl](https://www.perl.org), derived from [Minion::Backend::Pg](https://metacpan.org/pod/Minion::Backend::Pg) with supports for all its features .
 #
@@ -12,9 +12,10 @@
 #
 # UPDATES:
 #   AUTHOR  DATE        VER  COMMENTS
-#   EB      2022-01-17  1.2  Update backend to v.1.13
-#   EB      2021-11-04  1.3  Update backend to v.1.12
-#   EB      2021-09-24  1.1  Update backend to v.1.10
+#   EB      2022-02-24  1.4  Update Backend to v.1.14
+#   EB      2022-01-17  1.3  Update Backend to v.1.13
+#   EB      2021-11-04  1.2  Update Backend to v.1.12
+#   EB      2021-09-24  1.1  Update Backend to v.1.10
 #   EB      2021-09-09  1.0  Initial Version
 #
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -55,6 +56,6 @@ LABEL org.opencontainers.image.licenses=Artistic-2.0
 LABEL org.opencontainers.image.source=https://github.com/avkhozov/Minion-Backend-MongoDB/blob/master/mongodb/Dockerfile
 LABEL org.opencontainers.image.title=Minion::Backend::MongoDB
 LABEL org.opencontainers.image.url=https://github.com/avkhozov/Minion-Backend-MongoDB
-LABEL org.opencontainers.image.version=1.3-mongodb
+LABEL org.opencontainers.image.version=1.4-mongodb
 
 CMD ["/bin/bash", "-c"]

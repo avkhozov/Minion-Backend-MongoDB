@@ -7,13 +7,13 @@ Minion::Backend::MongoDB is a backend for Minion, a high performance job queue i
 
 All images, unless explicitly defined, are based on [ebruni/mojolicious:minion](https://hub.docker.com/repository/docker/ebruni/mojolicious) and provide installed together with these Perl modules:
 
-* [Minion::Backend::MongoDB](https://metacpan.org/pod/Minion::Backend::MongoDB) v1.13.
+* [Minion::Backend::MongoDB](https://metacpan.org/pod/Minion::Backend::MongoDB) v1.14.
 
 # Supported tags and respective Dockerfile links
 
-* Minion::Backend::MongoDB: [1.3, latest (main/Dockerfile)](https://github.com/avkhozov/Minion-Backend-MongoDB/blob/master/main/Dockerfile) (size: **59.5MB**)
+* Minion::Backend::MongoDB: [1.4, latest (main/Dockerfile)](https://github.com/avkhozov/Minion-Backend-MongoDB/blob/master/main/Dockerfile) (size: **59.6MB**)
 
-* Minion::Backend::MongoDB: [1.3-mongodb, mongodb (mongodb/Dockerfile)](https://github.com/avkhozov/Minion-Backend-MongoDB/blob/master/mongodb/Dockerfile) (size: **59.6MB**) based on [ebruni/mojolicious:minion-mongodb](https://hub.docker.com/repository/docker/ebruni/mojolicious) 
+* Minion::Backend::MongoDB: [1.4-mongodb, mongodb (mongodb/Dockerfile)](https://github.com/avkhozov/Minion-Backend-MongoDB/blob/master/mongodb/Dockerfile) (size: **59.6MB**) based on [ebruni/mojolicious:minion-mongodb](https://hub.docker.com/repository/docker/ebruni/mojolicious) 
 # How to use this image
 
     $ docker container run --rm -ti ebruni/minion-backend-mongodb /bin/ash
@@ -26,9 +26,10 @@ Emiliano Bruni (EB) <info@ebruni.it>
 
 | AUTHOR | DATE | VER. | COMMENTS |
 |:---|:---:|:---:|:---|
-| EB | 2022-01-17 | 1.2 | Update backend to v.1.13 |
-| EB | 2021-11-04 | 1.3 | Update backend to v.1.12 |
-| EB | 2021-09-24 | 1.1 | Update backend to v.1.10 |
+| EB | 2022-02-24 | 1.4 | Update Backend to v.1.14 |
+| EB | 2022-01-17 | 1.3 | Update Backend to v.1.13 |
+| EB | 2021-11-04 | 1.2 | Update Backend to v.1.12 |
+| EB | 2021-09-24 | 1.1 | Update Backend to v.1.10 |
 | EB | 2021-09-09 | 1.0 | Initial Version |
 
 # Source
