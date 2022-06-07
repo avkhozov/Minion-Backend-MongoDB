@@ -28,7 +28,7 @@ based on [<%= $releases->{$_}->{from} %>](https://hub.docker.com/repository/dock
 % if($releases->{$_}->{perl_modules}) {
 with these additional Perl modules
 
-%= join(",\n", map {"\t* [$_](https://metacpan.org/pod/$_) v" . $mcpan->module($_)->version} $releases->{$_}->{perl_modules}->@*) . '.'
+%= join(",\n", map {"  * [$_](https://metacpan.org/pod/$_) v" . $mcpan->module($_)->version} $releases->{$_}->{perl_modules}->@*) . '.'
 % }  # if
 % } # for
 
