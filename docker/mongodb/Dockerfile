@@ -12,7 +12,8 @@
 #
 # UPDATES:
 #   AUTHOR  DATE        VER  COMMENTS
-#   EB      2022-06-07  1.4  Update to Mojolicious v.9.26
+#   EB      2022-06-07  1.6  Updated to alpine 3.20. Mojolicious to v. 9.38
+#   EB      2022-06-07  1.5  Update to Mojolicious v.9.26
 #   EB      2022-02-24  1.4  Update Backend to v.1.14
 #   EB      2022-01-17  1.3  Update Backend to v.1.13
 #   EB      2021-11-04  1.2  Update Backend to v.1.12
@@ -28,7 +29,7 @@
 # do not edit it directly
 #
 FROM ebruni/mojolicious:minion-mongodb
-MAINTAINER Emiliano Bruni <info@ebruni.it>
+LABEL maintainer="Emiliano Bruni <info@ebruni.it>"
 
 WORKDIR /var/www
 
@@ -57,6 +58,6 @@ LABEL org.opencontainers.image.licenses=Artistic-2.0
 LABEL org.opencontainers.image.source=https://github.com/avkhozov/Minion-Backend-MongoDB/blob/master/mongodb/Dockerfile
 LABEL org.opencontainers.image.title=Minion::Backend::MongoDB
 LABEL org.opencontainers.image.url=https://github.com/avkhozov/Minion-Backend-MongoDB
-LABEL org.opencontainers.image.version=1.5-mongodb
+LABEL org.opencontainers.image.version=1.6-mongodb
 
 CMD ["/bin/bash", "-c"]

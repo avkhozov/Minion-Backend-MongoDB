@@ -11,9 +11,9 @@ All images, unless explicitly defined, are based on [ebruni/mojolicious:minion](
 
 # Supported tags and respective Dockerfile links
 
-* Minion::Backend::MongoDB: [1.5, latest (main/Dockerfile)](https://github.com/avkhozov/Minion-Backend-MongoDB/blob/master/main/Dockerfile) (size: ****)
+* Minion::Backend::MongoDB: [1.6, latest (main/Dockerfile)](https://github.com/avkhozov/Minion-Backend-MongoDB/blob/master/main/Dockerfile) (size: **106MB**)
 
-* Minion::Backend::MongoDB: [1.5-mongodb, mongodb (mongodb/Dockerfile)](https://github.com/avkhozov/Minion-Backend-MongoDB/blob/master/mongodb/Dockerfile) (size: ****) based on [ebruni/mojolicious:minion-mongodb](https://hub.docker.com/repository/docker/ebruni/mojolicious) 
+* Minion::Backend::MongoDB: [1.6-mongodb, mongodb (mongodb/Dockerfile)](https://github.com/avkhozov/Minion-Backend-MongoDB/blob/master/mongodb/Dockerfile) (size: **106MB**) based on [ebruni/mojolicious:minion-mongodb](https://hub.docker.com/repository/docker/ebruni/mojolicious) 
 # How to use this image
 
     $ docker container run --rm -ti ebruni/minion-backend-mongodb /bin/ash
@@ -26,7 +26,8 @@ Emiliano Bruni (EB) <info@ebruni.it>
 
 | AUTHOR | DATE | VER. | COMMENTS |
 |:---|:---:|:---:|:---|
-| EB | 2022-06-07 | 1.4 | Update to Mojolicious v.9.26 |
+| EB | 2022-06-07 | 1.6 | Updated to alpine 3.20. Mojolicious to v. 9.38 |
+| EB | 2022-06-07 | 1.5 | Update to Mojolicious v.9.26 |
 | EB | 2022-02-24 | 1.4 | Update Backend to v.1.14 |
 | EB | 2022-01-17 | 1.3 | Update Backend to v.1.13 |
 | EB | 2021-11-04 | 1.2 | Update Backend to v.1.12 |
