@@ -20,7 +20,7 @@
 #
 %= $warning
 FROM <%= $release->{$from} || $from %>
-MAINTAINER <%= $global->{author}->{name} . ' <' . $global->{author}->{mail} . '>' %>
+LABEL maintainer="<%= $global->{author}->{name} . ' <' . $global->{author}->{mail} . '>' %>"
 
 WORKDIR <%= $global->{app_folder} %>
 %= 'EXPOSE '. $global->{publish} if ($global->{publish});
