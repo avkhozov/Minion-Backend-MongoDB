@@ -1,7 +1,7 @@
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 #
 # AUTHORS :  Emiliano Bruni (EB) <info@ebruni.it>
-# DATE    :  2022-06-07
+# DATE    :  2025-03-21
 # PURPOSE :
 #   Backend for Minion, a high performance job queue in [Perl](https://www.perl.org), derived from [Minion::Backend::Pg](https://metacpan.org/pod/Minion::Backend::Pg) with supports for all its features .
 #
@@ -12,7 +12,7 @@
 #
 # UPDATES:
 #   AUTHOR  DATE        VER  COMMENTS
-#   EB      2022-06-07  1.6  Updated to alpine 3.20. Mojolicious to v. 9.38
+#   EB      2025-03-21  1.6  Updated to alpine 3.20. Mojolicious to v. 9.38
 #   EB      2022-06-07  1.5  Update to Mojolicious v.9.26
 #   EB      2022-02-24  1.4  Update Backend to v.1.14
 #   EB      2022-01-17  1.3  Update Backend to v.1.13

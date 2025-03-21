@@ -26,7 +26,7 @@ Emiliano Bruni (EB) <info@ebruni.it>
 
 | AUTHOR | DATE | VER. | COMMENTS |
 |:---|:---:|:---:|:---|
-| EB | 2022-06-07 | 1.6 | Updated to alpine 3.20. Mojolicious to v. 9.38 |
+| EB | 2025-03-21 | 1.6 | Updated to alpine 3.20. Mojolicious to v. 9.38 |
 | EB | 2022-06-07 | 1.5 | Update to Mojolicious v.9.26 |
 | EB | 2022-02-24 | 1.4 | Update Backend to v.1.14 |
 | EB | 2022-01-17 | 1.3 | Update Backend to v.1.13 |
